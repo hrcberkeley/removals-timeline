@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<title>Embed the removals timeline — Human Rights Center</title>
+<meta name="description" content="How to embed the Human Rights Center's timeline of third-country removal arrangements on your own site.">
+
+<!--
+  Instructions for embedding graph.html, which sits next to this file.
+  Published at https://osinv.org/embed/ ; the graph at .../embed/graph.html
+  The preview below is the real graph in a real iframe — if it renders here,
+  the snippets on this page work.
+-->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Libre+Franklin:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap" rel="stylesheet">
+
+<style>
+/* Same tokens as the graph, so the two pages read as one thing. */
+:root {
+  --paper: #FFFDF7;
+  --paper-2: #F7F4EC;
+  --ink: #002145;
+  --ink-2: #334F68;
+  --ink-3: #5A6F81;
+  --rule-2: #E2E8ED;
+  --edge: #7A8B98;          /* 3.4:1 on paper — every control boundary */
+  --focus: #0067A8;
+  --brand: #BB2026;
+
+  --display: 'Newsreader', Georgia, serif;
+  --body: 'Libre Franklin', 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--body);
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.wrap { max-width: 68rem; margin: 0 auto; padding: clamp(28px, 5vw, 64px) clamp(20px, 4vw, 48px) 5rem; }
+
+/* --- masthead ---------------------------------------------------------- */
+.masthead { display: flex; align-items: flex-start; gap: 1.5rem; flex-wrap: wrap;
+            border-bottom: 1px solid var(--rule-2); padding-bottom: 1.4rem; margin-bottom: 2.4rem; }
+.masthead img { width: 62px; height: auto; display: block; }
+.eyebrow { font-family: var(--mono); font-size: .64rem; letter-spacing: .16em;
+           text-transform: uppercase; color: var(--ink-3); }
+h1 { font-family: var(--display); font-weight: 600; font-size: clamp(1.7rem, 4vw, 2.6rem);
+     letter-spacing: -.022em; line-height: 1.06; margin: .3rem 0 .5rem; }
+.lede { color: var(--ink-2); max-width: 60ch; font-size: 1rem; }
+
+h2 { font-family: var(--display); font-weight: 600; font-size: clamp(1.15rem, 2.2vw, 1.5rem);
+     letter-spacing: -.015em; margin: 3rem 0 .3rem; }
+h3 { font-size: .92rem; font-weight: 600; margin: 1.6rem 0 .35rem; }
+p, li { font-size: .92rem; color: var(--ink-2); max-width: 62ch; }
+p + p { margin-top: .7rem; }
+a { color: var(--focus); }
+.sec-note { font-family: var(--mono); font-size: .64rem; letter-spacing: .14em;
+            text-transform: uppercase; color: var(--ink-3); margin-bottom: 1rem; }
+
+/* --- the live preview --------------------------------------------------- */
+.preview { border: 1px solid var(--edge); background: var(--paper-2); margin: 1rem 0 .5rem; }
+.preview iframe { display: block; width: 100%; height: 760px; border: 0; }
+.caption { font-family: var(--mono); font-size: .64rem; letter-spacing: .08em;
+           color: var(--ink-3); margin-bottom: 2rem; }
+
+/* --- code blocks -------------------------------------------------------- */
+.snippet { border: 1px solid var(--edge); background: var(--paper-2); margin: .6rem 0 1.4rem; }
+.snippet-head { display: flex; align-items: center; gap: 1rem;
+                padding: .45rem .5rem .45rem .8rem; border-bottom: 1px solid var(--rule-2); }
+.snippet-head h3 { margin: 0; font-family: var(--mono); font-size: .64rem; letter-spacing: .13em;
+                   text-transform: uppercase; color: var(--ink-2); font-weight: 600; }
+.copy {
+  margin-left: auto; font: inherit; font-size: .72rem; line-height: 1;
+  padding: .38rem .6rem; background: var(--paper); color: var(--ink-2);
+  border: 1px solid var(--edge); border-radius: 2px; cursor: pointer;
+}
+.copy:hover { border-color: var(--ink-2); color: var(--ink); }
+pre { overflow-x: auto; padding: .8rem; }
+code { font-family: var(--mono); font-size: .76rem; line-height: 1.65; color: var(--ink);
+       white-space: pre; }
+p code, li code { background: var(--paper-2); padding: .08em .3em; font-size: .82em;
+                  border: 1px solid var(--rule-2); white-space: normal; }
+
+/* --- fact table --------------------------------------------------------- */
+dl.facts { border-top: 1px solid var(--rule-2); margin: 1rem 0 0; max-width: 62ch; }
+dl.facts > div { display: grid; grid-template-columns: 11rem 1fr; gap: 1rem;
+                 padding: .55rem 0; border-bottom: 1px solid var(--rule-2); align-items: baseline; }
+dt { font-family: var(--mono); font-size: .66rem; letter-spacing: .1em;
+     text-transform: uppercase; color: var(--ink-3); }
+dd { font-size: .88rem; color: var(--ink-2); }
+@media (max-width: 560px) { dl.facts > div { grid-template-columns: minmax(0, 1fr); gap: .1rem; } }
+
+ul.plain { list-style: none; margin: .6rem 0; }
+ul.plain li { padding: .3rem 0 .3rem 1.1rem; position: relative; }
+ul.plain li::before { content: "—"; position: absolute; left: 0; color: var(--ink-3); }
+
+.sr {
+  /* Pinned to the origin, not left in flow: a 1px box at the foot of the page
+     is enough to give an embedded copy a phantom scrollbar. */
+  position: absolute; top: 0; left: 0;
+  width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+
+footer { border-top: 1px solid var(--rule-2); margin-top: 3.5rem; padding-top: 1.2rem;
+         font-family: var(--mono); font-size: .64rem; letter-spacing: .12em;
+         text-transform: uppercase; color: var(--ink-3); }
+footer a { color: inherit; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <img src="hrc-wordmark.png" alt="" width="62" height="43">
+    <div>
+      <p class="eyebrow">Human Rights Center · UC Berkeley</p>
+      <h1>Embed the removals timeline</h1>
+      <p class="lede">A timeline of every arrangement to transfer people to a country they are not
+        from, concluded since January 2025. It is one self-contained file — put it in an iframe and
+        it works. Copy a snippet below.</p>
+    </div>
+  </header>
+
+  <h2>What it looks like</h2>
+  <p class="sec-note">Live — this is the real graph in a real iframe</p>
+  <div class="preview">
+    <iframe src="graph.html"
+            title="A Timeline of Removals and Related Deals"
+            loading="lazy"></iframe>
+  </div>
+  <p class="caption">If it renders here, the snippets below will render on your site.</p>
+
+  <h2>The code</h2>
+  <p>Paste this wherever raw HTML is allowed — a custom HTML block, a template, a page source.
+    Nothing else to install.</p>
+
+  <div class="snippet">
+    <div class="snippet-head">
+      <h3>Standard</h3>
+      <button class="copy" type="button">Copy</button>
+    </div>
+<pre><code>&lt;iframe src="https://osinv.org/embed/graph.html"
+        title="A Timeline of Removals and Related Deals"
+        width="100%" height="760"
+        style="border:0" loading="lazy"&gt;&lt;/iframe&gt;</code></pre>
+  </div>
+
+  <div class="snippet">
+    <div class="snippet-head">
+      <h3>Responsive height</h3>
+      <button class="copy" type="button">Copy</button>
+    </div>
+<pre><code>&lt;div style="position:relative;width:100%;aspect-ratio:4/3;min-height:420px"&gt;
+  &lt;iframe src="https://osinv.org/embed/graph.html"
+          title="A Timeline of Removals and Related Deals"
+          style="position:absolute;inset:0;width:100%;height:100%;border:0"
+          loading="lazy"&gt;&lt;/iframe&gt;
+&lt;/div&gt;</code></pre>
+  </div>
+
+  <p>Keep the <code>title</code> attribute. It is the only name a screen reader has for the frame,
+    and an untitled iframe is a plain accessibility failure on your page, not ours.</p>
+
+  <h2>Sizing</h2>
+  <p>The graph fills whatever box you give it and never scrolls your page. It has no fixed
+    aspect ratio — it re-lays out at every size, dropping the dates under each stop before it lets
+    any region fall off the bottom.</p>
+
+  <dl class="facts">
+    <div><dt>Recommended</dt><dd>Full column width, 760&nbsp;px tall.</dd></div>
+    <div><dt>Comfortable</dt><dd>640&nbsp;px wide and up, 560–900&nbsp;px tall.</dd></div>
+    <div><dt>Minimum</dt><dd>320&nbsp;px wide, 300&nbsp;px tall. It holds together, but readers
+      will lean on the zoom.</dd></div>
+    <div><dt>Narrower than 700&nbsp;px</dt><dd>Phone layout: the standfirst and the legend give
+      way to the map, the filters collapse behind a <em>Filters</em> button, region names go
+      abbreviated, marks get finger-sized targets and the view opens on the most recent five
+      months. Reset still shows the full record.</dd></div>
+  </dl>
+
+  <h2>How readers use it</h2>
+  <ul class="plain">
+    <li>Click any mark for the agreement, its terms and its sources.</li>
+    <li>Drag sideways to pan. <strong>Hold&nbsp;⌘ or Ctrl while scrolling to zoom</strong> — a bare
+      scroll is left alone, so nobody gets trapped in the frame on the way down your page. A
+      trackpad pinch works without the modifier.</li>
+    <li>The −&nbsp;/&nbsp;+&nbsp;/&nbsp;Reset buttons do the same thing, and the filter chips switch
+      whole categories on and off.</li>
+    <li>Keyboard: tab to the chart, then <code>+</code> <code>−</code> to zoom, arrow keys to pan,
+      <code>0</code> for the full record. Tab reaches every mark; Enter opens it; Escape closes.</li>
+  </ul>
+
+  <h2>What it loads</h2>
+  <dl class="facts">
+    <div><dt>Requests</dt><dd>The page itself, plus Google Fonts. Everything else — all data, the
+      logo, every script — is inside the one file.</dd></div>
+    <div><dt>If fonts are blocked</dt><dd>It falls back to Georgia, Helvetica and your system
+      monospace, and still lays out correctly.</dd></div>
+    <div><dt>Cookies and tracking</dt><dd>None. No analytics, no third-party scripts, no storage.</dd></div>
+    <div><dt>Accessibility</dt><dd>Keyboard operable throughout, WCAG&nbsp;2.1&nbsp;AA contrast,
+      every mark carries a screen-reader name, and each category is a distinct shape rather than
+      only a colour.</dd></div>
+    <div><dt>Page weight</dt><dd>275&nbsp;KB uncompressed; 74&nbsp;KB over the wire with gzip,
+      60&nbsp;KB with brotli. Most of it is the data itself.</dd></div>
+  </dl>
+
+  <h2>Hosting it yourself</h2>
+  <p>If you would rather not hot-link, download
+    <a href="graph.html" download>graph.html</a> and drop it on any static host. It has no build
+    step and no server requirement — <code>file://</code> works too. Point your iframe at your own
+    copy. A self-hosted copy will not pick up corrections, so prefer the canonical URL if you can.</p>
+
+  <h2>Credit</h2>
+  <p>The Human Rights Center credit sits in the footer of the graph and links back to the Center.
+    Please leave it there. A line of your own near the embed — <em>Source: Human Rights Center, UC
+    Berkeley</em> — is welcome but not required.</p>
+  <p>For questions about the data, corrections, or reuse beyond embedding, contact the
+    <a href="https://humanrights.berkeley.edu/" target="_blank" rel="noopener">Human Rights Center</a>.</p>
+
+  <footer>
+    <a href="https://humanrights.berkeley.edu/" target="_blank" rel="noopener">Human Rights Center · UC Berkeley</a>
+  </footer>
+</div>
+
+<p class="sr" id="status" role="status" aria-live="polite"></p>
+
+<script>
+/* Copy buttons. The snippet is the <code> next to the button — no ids to keep
+   in sync, so a new snippet block needs no JS change. */
+document.querySelectorAll(".copy").forEach((btn) => {
+  btn.addEventListener("click", async () => {
+    const code = btn.closest(".snippet").querySelector("code").textContent;
+    try {
+      await navigator.clipboard.writeText(code);
+      btn.textContent = "Copied";
+      document.getElementById("status").textContent = "Embed code copied to the clipboard.";
+    } catch (err) {
+      /* Clipboard is blocked on insecure origins and in some browsers; select
+         the text instead so Ctrl-C still works. */
+      const r = document.createRange();
+      r.selectNodeContents(btn.closest(".snippet").querySelector("code"));
+      const sel = getSelection();
+      sel.removeAllRanges(); sel.addRange(r);
+      btn.textContent = "Press ⌘C";
+      document.getElementById("status").textContent = "Snippet selected — press Command or Ctrl C to copy.";
+    }
+    setTimeout(() => { btn.textContent = "Copy"; }, 2600);
+  });
+});
+</script>
+</body>
+</html>
