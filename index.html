@@ -173,8 +173,15 @@ footer a { color: inherit; }
 
   <h2>Sizing</h2>
   <p>The graph fills whatever box you give it and never scrolls your page. It has no fixed
-    aspect ratio — it re-lays out at every size, dropping the dates under each stop before it lets
-    any region fall off the bottom.</p>
+    aspect ratio — it re-lays out at every size, and never lets a region fall off the bottom.
+    An opened region has a line per country, up to fifteen of them, so when they outgrow the box
+    the rows scroll inside the frame while the months stay pinned on top.</p>
+
+  <h3>Embedding one region</h3>
+  <p>Add the region to the address and the graph opens on it:
+    <code>graph.html#caribbean</code>, <code>#latin-america</code>, <code>#africa</code>,
+    <code>#europe-c-asia</code>, <code>#middle-east</code> or <code>#pacific</code>. Readers can
+    still go back to every region with <em>All regions</em>.</p>
 
   <dl class="facts">
     <div><dt>Recommended</dt><dd>Full column width, 760&nbsp;px tall.</dd></div>
@@ -189,14 +196,20 @@ footer a { color: inherit; }
 
   <h2>How readers use it</h2>
   <ul class="plain">
-    <li>Click any mark for the agreement, its terms and its sources.</li>
+    <li>Click a region's name to open it: one line per country, in the order their first
+      arrangement was made. <em>All regions</em> or Escape goes back.</li>
+    <li>Click a country's name for its card — everything on record for it — or any mark for the
+      agreement, its terms and its sources.</li>
+    <li>Only the arrangements are shown at first; the chips under <em>Also on the record</em> add
+      policy changes, travel bans, visa restrictions, health, security and biometric deals.</li>
     <li>Drag sideways to pan. <strong>Hold&nbsp;⌘ or Ctrl while scrolling to zoom</strong> — a bare
       scroll is left alone, so nobody gets trapped in the frame on the way down your page. A
       trackpad pinch works without the modifier.</li>
     <li>The −&nbsp;/&nbsp;+&nbsp;/&nbsp;Reset buttons do the same thing, and the filter chips switch
       whole categories on and off.</li>
     <li>Keyboard: tab to the chart, then <code>+</code> <code>−</code> to zoom, arrow keys to pan,
-      <code>0</code> for the full record. Tab reaches every mark; Enter opens it; Escape closes.</li>
+      <code>0</code> for the full record. Tab reaches every region, country and mark; Enter opens
+      it; Escape closes the panel, then the open region.</li>
   </ul>
 
   <h2>What it loads</h2>

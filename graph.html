@@ -136,6 +136,13 @@ h1 {
   border: 1px solid var(--edge); border-radius: 2px; cursor: pointer;
 }
 .zoom button:hover { border-color: var(--ink-2); color: var(--ink); }
+.back {
+  position: absolute; top: 0; left: 0; z-index: 5;
+  font: inherit; font-size: .76rem; font-weight: 600; line-height: 1; padding: .32rem .6rem;
+  background: var(--ink); color: var(--paper);
+  border: 1px solid var(--ink); border-radius: 2px; cursor: pointer;
+}
+.back:hover { background: var(--ink-2); }
 .zoom button[disabled] { color: var(--ink-3); cursor: default; opacity: .55; }
 .range {
   font-family: var(--mono); font-size: .62rem; letter-spacing: .06em;
@@ -205,9 +212,17 @@ h1 {
    and close. */
 .stage { position: relative; min-height: 0; overflow: hidden; }
 .chart { position: absolute; inset: 0; overflow: hidden; }
+/* With a region open there can be more countries than the box holds, so the
+   rows scroll inside the chart; the month axis is pinned by draw(). The gutter
+   is reserved so a scrollbar appearing never changes the width being drawn to. */
+.chart.rows { overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; }
 .chart svg { display: block; }
-.station { cursor: pointer; }
-.station .hit { fill: transparent; }
+.station, .region, .country { cursor: pointer; }
+.region .btn { fill: var(--paper); stroke: var(--edge); }
+.region:hover .btn { fill: var(--paper-2); stroke: var(--ink-2); }
+.country:hover text { fill: var(--focus); text-decoration: underline; }
+.region:focus-visible, .country:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.station .hit, .country .hit { fill: transparent; }
 .station text { pointer-events: none; }
 .station.dim { opacity: .32; }
 .empty {
@@ -228,6 +243,7 @@ h1 {
 .tip.on { opacity: 1; }
 .tip b { display: block; font-weight: 600; }
 .tip span { display: block; color: var(--on-ink); font-family: var(--mono); font-size: .66rem; letter-spacing: .06em; }
+.tip i { display: block; margin-top: .2rem; color: var(--on-ink); font-style: normal; font-size: .68rem; }
 
 /* --- legend -------------------------------------------------------------- */
 .foot { display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; border-top: 1px solid var(--rule-2); padding-top: .6rem; }
@@ -338,6 +354,12 @@ details.terms .facts { margin: 0; padding: 0 .6rem; }
   color: inherit; cursor: pointer;
 }
 .p-also button:hover { color: var(--focus); }
+.p-card {
+  display: block; width: 100%; margin-bottom: .9rem; padding: .45rem .6rem;
+  font: inherit; font-size: .78rem; text-align: left; color: var(--focus);
+  background: var(--paper-2); border: 1px solid var(--rule); border-radius: 2px; cursor: pointer;
+}
+.p-card:hover { border-color: var(--focus); }
 .p-also .d { font-family: var(--mono); font-size: .68rem; color: var(--ink-3); margin-right: .4rem; }
 
 @media (max-width: 560px) {
@@ -394,7 +416,8 @@ details.terms .facts { margin: 0; padding: 0 .6rem; }
       <h1>A Timeline of Removals and Related Deals</h1>
       <p class="sub">Every arrangement to transfer people to a country they are not from, concluded
         since January 2025, plotted by region and date, with the visa, aid and security moves around
-        them. Click any item for the agreement, its terms, its recorded flights and its sources.</p>
+        them. Open a region to see its countries one line each; click a country for its card, or any
+        item for the agreement, its terms, its recorded flights and its sources.</p>
     </div>
     <div class="tools">
       <input class="search" id="search" type="search" placeholder="Find a country…" aria-label="Find a country">
@@ -413,6 +436,8 @@ details.terms .facts { margin: 0; padding: 0 .6rem; }
   </details>
 
   <div class="stage">
+    <!-- In the chart's own corner, above the open region's name, where the eye already is. -->
+    <button type="button" class="back" id="back" hidden>← All regions</button>
     <div class="chart" id="chart" tabindex="0" role="application"
          aria-label="Timeline of removal arrangements by region. Arrow keys pan, plus and minus zoom, 0 resets.">
     </div>
@@ -474,19 +499,20 @@ const SHORT = {
                collapsed into one counted block where a batch shares a date
      dot     — a small mark in the lane below the line (the wider record),
                or, for country-less policy, on the rail above the first region
-   `on` is the default state. */
+   `on` is the default state: only the arrangements themselves, so a first
+   look is the deals; everything else is one chip away. */
 const LAYERS = {
   aca:        { label: "Asylum cooperation agreements", group: "Arrangements", kind: "station", style: "ring",   on: true },
   removal:    { label: "Removal agreements",            group: "Arrangements", kind: "station", style: "solid",  on: true },
   unreleased: { label: "Never published",               group: "Arrangements", kind: "station", style: "dashed", on: true },
   transfer:   { label: "No agreement, transfers anyway",group: "Arrangements", kind: "station", style: "dotted", on: true },
 
-  policy:     { label: "Immigration policy changes", group: "Also on the record", kind: "dot", shape: "triangle", colour: "#8E3340", on: true },
-  travel_ban: { label: "Travel bans",         group: "Also on the record", kind: "tick", colour: "#8E3340", on: true },
-  visa:       { label: "Visa restrictions",   group: "Also on the record", kind: "tick", colour: "#A25A28", on: true },
+  policy:     { label: "Immigration policy changes", group: "Also on the record", kind: "dot", shape: "triangle", colour: "#8E3340", on: false },
+  travel_ban: { label: "Travel bans",         group: "Also on the record", kind: "tick", colour: "#8E3340", on: false },
+  visa:       { label: "Visa restrictions",   group: "Also on the record", kind: "tick", colour: "#A25A28", on: false },
   health:     { label: "Health deals",         group: "Also on the record", kind: "dot", shape: "circle",   colour: "#4F8A78", on: false },
   security:   { label: "Security & policing",  group: "Also on the record", kind: "dot", shape: "square",   colour: "#8A6A4F", on: false },
-  biometric:  { label: "Biometric data sharing", group: "Also on the record", kind: "dot", shape: "diamond", colour: "#5A7B96", on: true },
+  biometric:  { label: "Biometric data sharing", group: "Also on the record", kind: "dot", shape: "diamond", colour: "#5A7B96", on: false },
 };
 
 /* Station radius by category. */
@@ -539,8 +565,7 @@ const DATA = {
 {"id": "ag-20", "date": "2025-03-10", "country": "Honduras", "cat": "aca", "title": "Agreement Between the Government of the United States of America and the Government of the Republic of Honduras for Cooperation in the Examination of Protection Requests", "kicker": "Formal Agreement · Asylum Cooperation Agreement", "summary": "", "doc": {"form": "Formal Agreement", "type": "Asylum Cooperation Agreement", "signed": "3/10/2025", "eif": "Upon completion of necessary domestic legal procedures", "hybrid": false, "pdf": "https://drive.google.com/file/d/1HTm7vGFQEyT4w0xD_NlIyA9MdTWejWQp/view?usp=sharing", "terms": [["Scope and selection", [["Discretion over selection", "Honduras has full discretion to accept individuals"], ["Excludes people with criminal history", "Yes"], ["Excludes unaccompanied minors", "No"], ["Excludes stateless persons", "No"], ["Other limits", "No obligation to accept individuals involved in \"crimes against humanity, drug trafficking, terrorism, human trafficking, smuggling of migrants, child pornographym human rights violations,\" other illicit activities, or who are subject to Interpol notifications."]]], ["Protections on paper", [["Access to asylum procedures", "Yes"], ["Non-refoulement guarantee", "Yes"], ["Cites 1951 Refugee Convention", "Yes"], ["Cites 1967 Protocol", "Yes"], ["Cites Convention Against Torture", "Yes"], ["General international-law assurance", "Yes"]]], ["Duration and exit", [["Duration", "1 year"], ["Automatic renewal", "Yes"], ["Renewal", "Automatic annual renewal unless Party provides notice at least 30 days prior to expiration."], ["Withdrawal or termination", "6 month notice in writing"], ["Dispute resolution", "Resolve through diplomatic channels"]]], ["Paperwork", [["Length (pages)", "5+5"], ["Accompanying plan or annex", "No"], ["Counterpart signatory", "Eduardo Enrique Reina Garcia, Foreign Minister"], ["Intent to develop operating procedure", "Yes"], ["Acknowledges sovereignty", "No"], ["IOM involved", "No"]]], ["Recorded transfers (4)", [["2025-10-10", "Mexican · 7 · Unknown"], ["2026-06-04", "Unknown (flight had a combination of TCNs and Hondurans) · Unknown · Unknown", ["https://x.com/ICEFlightM/status/2062643501943103862"]], ["2026-06-11", "Unknown (TCRs likely from Central America) · Unknown · Unknown", ["https://gillianbrockell.com/tracking-all-of-trumps-third-country-removals-that-we-know-of/"]], ["2026-06-23", "Unknown (TCRs likely from Central America) · Unknown · Unknown", ["https://bsky.app/profile/jjindc.bsky.social/post/3moxpv4dcys26"]]]]]}, "sources": ["https://www.thirdcountrydeportationwatch.org/honduras", "https://drive.google.com/file/d/1HTm7vGFQEyT4w0xD_NlIyA9MdTWejWQp/view?usp=sharing", "https://www.state.gov/wp-content/uploads/2026/06/Treaties-in-Force-2026.pdf#page=195"]},
 {"id": "cx-317", "date": "2025-03-26", "country": "El Salvador", "cat": "security", "title": "US and El Salvador: Memorandum of Cooperation to update the Security Alliance for Fugitive Enforcement (SAFE)", "kicker": "U.S. Secretary of Homeland Security Kristi Noem; Minister of Security and Justice Gustavo Villatoro; President of El Salvador Nayib Bukele", "summary": "Memorandum of Cooperation to update the Security Alliance for Fugitive Enforcement (SAFE): This agreement allows the sharing of criminal records between the U.S. and El Salvador to prevent fugitives from being inadvertently released into either country.", "sources": ["https://sv.usembassy.gov/secretary-kristi-noem-visits-el-salvador/"]},
 {"id": "cx-368", "date": "2025-03-27", "country": "Colombia", "cat": "biometric", "title": "US and Colombia sign Biometric Data Sharing Partnership Letter of Intent", "kicker": "Kristi Noem; Laura Sarabia · U.S. Secretary of Homeland Security; Colombian Foreign Minister", "summary": "Secretary Noem and Foreign Minister Sarabia signed a Biometric Data Sharing Partnership (BDSP) letter of intent in Bogota to facilitate biometric-data sharing to identify criminals and terrorists and improve border and migration cooperation. Colombia sits at the southern funnel of the Darien Gap migration corridor; DHS later credited the cooperation with contributing to more than 1,700 deportations and 1,000 arrests in the region by mid-2025. As a letter of intent rather than a signed implementing memorandum, it records a policy commitment rather than a fully operational data-sharing arrangement.", "sources": ["https://www.dhs.gov/news/2025/05/05/100-days-secretary-noem-making-america-safe-again"]},
-{"id": "cx-286", "date": "2025-03-27", "country": "Guyana", "cat": "security", "title": "U.S. and Guyana sign counternarcotics information-sharing MOU", "kicker": "Unknown · Signatory not identified in source", "summary": "The United States and Guyana signed a security cooperation memorandum of understanding covering counternarcotics information sharing.", "sources": ["https://foia.state.gov/_docs/CaseAct/Zip%20file%20of%20Non-Bindings%20reported%206.30.2025.zip"]},
-{"id": "cx-326", "date": "2025-03-27", "country": "Guyana", "cat": "security", "title": "US and Guyana: U.S.-Guyana Security Cooperation MOU", "kicker": "Ambassador Nicole D. Theriot; Ambassador Hinds; Ms. Rosalinda Rasul", "summary": "U.S.-Guyana Security Cooperation MOU: Secretary Rubio and Guyanese officials signed a landmark Memorandum of Understanding on Security Cooperation in Georgetown in March 2025. | The United States and Guyana signed a Security Cooperation Agreement on March 27 to cement their security partnership.", "sources": ["https://gy.usembassy.gov/ambassador-theriot-delivers-keynote-address-at-launch-of-guyana-diaspora-forum-series/"]},
+{"id": "cx-326", "date": "2025-03-27", "country": "Guyana", "cat": "security", "title": "US and Guyana: U.S.-Guyana Security Cooperation MOU", "kicker": "Ambassador Nicole D. Theriot; Ambassador Hinds; Ms. Rosalinda Rasul", "summary": "U.S.-Guyana Security Cooperation MOU: Secretary Rubio and Guyanese officials signed a landmark Memorandum of Understanding on Security Cooperation in Georgetown in March 2025. | The United States and Guyana signed a Security Cooperation Agreement on March 27 to cement their security partnership.", "sources": ["https://gy.usembassy.gov/ambassador-theriot-delivers-keynote-address-at-launch-of-guyana-diaspora-forum-series/", "https://foia.state.gov/_docs/CaseAct/Zip%20file%20of%20Non-Bindings%20reported%206.30.2025.zip"]},
 {"id": "ag-14", "date": "2025-03-14", "country": "El Salvador", "cat": "removal", "title": "El Salvador: diplomatic notes on third-country removals", "kicker": "Diplomatic Notes · Other · Ref. No. 2025-93", "summary": "", "doc": {"form": "Diplomatic Notes", "type": "Other", "signed": "03/13/2025; 03/14/2025; 03/31/2025", "eif": "", "hybrid": false, "pdf": "https://drive.google.com/file/d/1qEhVi04EytxpXEiaeu-lzMij1sT0oEm9/view?usp=sharing", "terms": [["Scope and selection", [["Number of transferees", "300"], ["Excludes people with criminal history", "No"], ["Excludes unaccompanied minors", "No"], ["Excludes stateless persons", "No"]]], ["Protections on paper", [["Access to asylum procedures", "No"], ["Non-refoulement guarantee", "No"], ["Cites 1951 Refugee Convention", "No"], ["Cites 1967 Protocol", "No"], ["Cites Convention Against Torture", "No"], ["General international-law assurance", "No"]]], ["Money", [["Amount provided", "USD 4,760,000"], ["Purpose of funding", "\"For El Salvador’s law enforcement and anticrime needs, which may include costs associated with the detention of members of the Foreign Terrorist Organization Tren de Aragua (TdA), whom El Salvador accepted from the United States.\""], ["Fund disbursement", "Deposited directly into the Government of El Salvador’s bank account \"as soon as practicable\""], ["Restrictions on use", "Funds may not support terrorism, serious human rights abuses, corruption or drug trafficking; mass-migration caravans moving towards the US; legal counselling on the US asylum process; UNRWA; or anything not complying with EO 14173."], ["Additional terms", "El Salvador gives the US 30 days’ notice before using funds to assist any security force unit, and reports on financial activity under the agreement."]]], ["Duration and exit", [["Automatic renewal", "No"]]], ["Paperwork", [["Accompanying plan or annex", "No"], ["Intent to develop operating procedure", "No"], ["Acknowledges sovereignty", "No"], ["IOM involved", "No"]]], ["Recorded transfers (5)", [["2025-03-16", "Venezuela · 238 · All the Venezuelans held at CECOT were eventually sent to Venezuela", ["https://www.hrw.org/news/2025/04/11/us/el-salvador-venezuelan-deportees-forcibly-disappeared"]], ["2025-03-16", "Unknown · Unknown · Unknown"], ["2025-03-16", "Unknown · Unknown · Unknown"], ["2025-03-31", "7 Venezuelans · 7 · All the Venezuelans held at CECOT were eventually sent to Venezuela", ["https://www.wola.org/2025/04/weekly-u-s-mexico-border-update-el-salvador-renditions-budget-military-role-march-migration/"]], ["2025-04-12", "Venezuela · Unknown · Unknown"]]]]}, "sources": ["https://sv.usembassy.gov/remarks-by-secretary-rubio-and-minister-alexandra-hill-tinoco/", "https://drive.google.com/file/d/1qEhVi04EytxpXEiaeu-lzMij1sT0oEm9/view?usp=sharing"]},
 {"id": "ag-7", "date": "2025-04-03", "country": "Costa Rica", "cat": "removal", "title": "Memorandum Of Understanding Between The Government Of The United States Of America And The Government Of The Republic Of Costa Rica Concerning Assistance For The Deportation Of Select Irregular Migrants", "kicker": "Memorandum of Understanding · Removal Arrangement", "summary": "", "doc": {"form": "Memorandum of Understanding", "type": "Removal Arrangement", "signed": "4/3/2025", "eif": "4/3/2025", "hybrid": false, "pdf": "https://drive.google.com/file/d/1neWpQ3XgBAMleaVMX0mYTjiFWuDQGSC1/view?usp=drive_link", "terms": [["Scope and selection", [["Expressed purpose", "1. \"[C]urbing mass and irregular migration for the public safety and security;\"\n2. \"[C}considering threats posed by certain individuals capitalizing on mass and irregular\nmigration to Participants' public and national security, and the profits generated by human\ntrafficking and smuggling for transnational organized criminal organizations.\""], ["Discretion over selection", "CR has right to deny to persons or categories of persons transferred from US"], ["Excludes people with criminal history", "No"], ["Excludes unaccompanied minors", "No"], ["Excludes stateless persons", "No"]]], ["Protections on paper", [["Access to asylum procedures", "No"], ["Non-refoulement guarantee", "Yes"], ["Cites 1951 Refugee Convention", "Yes"], ["Cites 1967 Protocol", "Yes"], ["Cites Convention Against Torture", "Yes"], ["General international-law assurance", "Yes"], ["Treatment in receiving country", "Costa Rican officials encounter, safely and securely house and transport, and\ndetermine whether to deport migrants."]]], ["Money", [["Potential future funding", "\"As appropriate,\" US will provide CR \"with support for costs associated with escorts\""], ["Restrictions on use", "Funds provided by US under this MOU \"will not be used for construction.\""], ["Additional terms", "The US is to provide technical advice and logistical support including air transportation; resources to enable or improve deportation facilities; equipment, transportation and logistical support; and assistance for deportation by air, by US-chartered flights and/or US-purchased commercial tickets."]]], ["Duration and exit", [["Duration", "1 year"], ["Automatic renewal", "No"], ["Renewal", "Parties may decide to extend"], ["Withdrawal or termination", "1. 60 day written notice. \n2. May immediately suspend/ discontinue MOU if it lacks the institutional capacity, resources or infrastructure to comply with commitments under national and int. law."]]], ["Paperwork", [["Length (pages)", "4+1"], ["Accompanying plan or annex", "Yes"], ["Counterpart signatory", "*Signature illegible"], ["Intent to develop operating procedure", "No"], ["Acknowledges sovereignty", "No"], ["IOM involved", "No"]]], ["Recorded transfers (21)", [["2025-02-20", "Mainly from Central Asia (Uzbekistan, China and Armenia), also from Afghanistan, Iran, Turkey, Jordan, Russia & Georgia · 135 · 110 (\"voluntary\" return program), 34 left after filing asylum applications, & 57 left voluntarily", ["https://www.nytimes.com/2025/02/20/us/politics/deportation-flights-costa-rica-trump.html"]], ["2025-02-25", "China, Russia, Nepal, Congo, Yemen, Vietnam, and Georgia · 65 · 110 (\"voluntary\" return program), 34 left after filing asylum applications, & 57 left voluntarily", ["https://ticotimes.net/2025/02/26/second-u-s-deportation-flight-lands-in-costa-rica"]], ["2026-04-11", "Albania (1), Cameroon (4), China (2), Guatemala (8), Honduras (4), India (3), Kenya (1), &  Morocco (2) · 25 · Two options, repatriation or aslyum; actual # repatriated unknown", ["https://observador.cr/costa-rica-recibe-25-personas-deportadas-desde-estados-unidos-bajo-acuerdo-migratorio-bilateral/"]], ["2026-04-17", "Brazil (8), Romania (3), Uzbekistan (3), China (2), Azerbaijan (2), Belarus (1), India (1), Ireland (1), and Vietnam (1) · 22 · See above", ["https://amcostarica.com/Costa%20Rica%20News%20Second%20Flight%20Of%20U.S.%20Deported%20Migrants%20Arrives%20In%20Costa%20Rica%20041826.html"]], ["2026-04-24", "Guatemala (5), Brazil (4), Honduras (5), China (3), India (3), Russia (1), Uzbekistan (1), Turkey (1), Bolivia (1), and Romania (1) · 25 · See above (of the first 3 flights in 2026, 18 = assisted voluntary return program as of April 24)", ["https://observador.cr/costa-rica-recibe-tercer-vuelo-con-25-deportados-desde-ee-uu-se-suman-3-costarricenses-que-regresaron-al-pais/"]], ["2026-05-15", "Bolivia (2), Chile (1), China (6), France (1) and Madagascar (2) · 12 · See above", ["https://ticotimes.net/2026/05/17/costa-rica-receives-fourth-u-s-deportation-flight-under-migration-deal"]], ["2026-05-21", "Colombia (6), China (3), Brazil (2), Uzbekistan (2), Senegal (1), and Kyrgystan (1) · 15 · See above", ["https://www.teletica.com/nacional/15-migrantes-ingresan-en-quinto-vuelo-con-deportados-por-ee-uu_409229"]], ["2026-05-28", "Colombia (9), Brazil (8), China (2), Senegal (2), Albania (1), Argentina (1), Mauritania (1), and Nepal (1) · 25 · See above (Costa Rica migration said 25 people had left the country as of May 28)", ["https://www.nacion.com/sucesos/costa-rica-recibe-nuevo-grupo-de-deportados-desde/223ZCMQ3BRB3LHDTNGZNWGQXWM/story/"]], ["2026-06-04", "Colombia (11), Brazil (5), Vietnam (4), Bolivia (2), China (2), and Azerbaijan (1) · 25 · See above", ["https://www.amprensa.com/2026/06/costa-rica-recibe-a-25-migrantes-mas-deportados-desde-estados-unidos"]], ["2026-06-11", "Uknown · 24 · Unknown", ["https://x.com/ICEFlightM/status/2065194145363190053"]], ["2026-06-18", "Unknown · 22 · Unknown", ["https://bsky.app/profile/jjindc.bsky.social/post/3mola7jdkmc2z"]], ["2026-06-25", "Unknown · 12 · Unknown", ["https://x.com/ICEFlightM/status/2070520305575919648"]], ["2026-07-02", "Unknown · 19 · Unknown"], ["2026-07-09", "Unknown · 22 · Unknown", ["https://bsky.app/profile/jjindc.bsky.social/post/3mqa5rlehx226"]], ["2026-07-16", "Unknown · 19 · Unknown"], ["2026-07-24", "Unknown · 23 · Unknown"], ["2026-07-30", "Unknown · 16 · Unknown"], ["2026-08-06", "Unknown · 25 · Unknown"], ["2026-08-13", "Unknown · 25 · Unknown"], ["2026-08-20", "Albania, Argentina, Azerbaijan, Bielorussia, Bolivia, Brazil, Cameroon, Chile, China, Colombia, Cuba, Ecuador, France, Guatemala, Honduras, India, Ireland, Jamaica, Kenya, Kirgystan, Marocco, Mauritania, Mexico, Nepal, Nicaragua, Tanzania, Paraguay, Peru, DRC, Dominican Republic, Roumania, Russia, Saint Vincent, Senegal, Somalia, Tanzania, Turkey, Uzbekistan, Vietnam · 24 · Unknown"], ["2026-08-28", "Unknown · 19 · Unknown"]]]]}, "sources": ["https://www.thirdcountrydeportationwatch.org/costa-rica", "https://drive.google.com/file/d/1neWpQ3XgBAMleaVMX0mYTjiFWuDQGSC1/view?usp=drive_link"]},
 {"id": "mx-ss-visa-revocation", "date": "2025-04-05", "country": "South Sudan", "cat": "visa", "title": "U.S. revokes every visa held by South Sudanese passport holders", "kicker": "Marco Rubio · Secretary of State", "summary": "Quoting the State Department statement, the Department is \"taking actions to revoke all visas held by South Sudanese passport holders and prevent further issuance to prevent entry into the United States by South Sudanese passport holders.\" The stated cause is a removals dispute: the statement holds that every country must \"accept the return of its citizens in a timely manner when . . . the United States seeks to remove them,\" and finds South Sudan's transitional government in breach. It closes, again quoting: \"We will be prepared to review these actions when South Sudan is in full cooperation.\" This is the pressure that precedes the South Sudan diplomatic notes recorded five weeks later.", "sources": ["https://www.state.gov/defending-americas-security-through-visa-and-travel-restrictions-on-south-sudan", "https://ss.usembassy.gov/defending-americas-security-through-visa-and-travel-restrictions-on-south-sudan/", "https://immpolicytracking.org/policies/state-department-taking-steps-to-revoke-all-south-sudanese-visas/"]},
@@ -615,8 +640,7 @@ const DATA = {
 {"id": "ag-28", "date": "2025-12-12", "country": "Saint Kitts and Nevis", "cat": "removal", "title": "Memorandum Of Understanding Between The Government Of The United States Of America And The Government Of Saint Kitts and Nevis Concerning The Removal Of Third Country Nationals", "kicker": "Memorandum of Understanding · Removal Arrangement", "summary": "", "doc": {"form": "Memorandum of Understanding", "type": "Removal Arrangement", "signed": "12/12/2025", "eif": "12/12/2025", "hybrid": false, "pdf": "https://drive.google.com/file/d/1wHD9ZgmB6bhjZhq87ptSqsDeJjgLl2zD/view?usp=drive_link", "terms": [["Scope and selection", [["Nationality / geographic limits", "Limited to citizens or nationals of Caribbean Community member states"], ["Discretion over selection", "St Kitts and Nevis may consider accepting, in whole or in part, proposed transferees"], ["Excludes people with criminal history", "Yes"], ["Excludes unaccompanied minors", "No"], ["Excludes stateless persons", "No"], ["Other limits", "1. Will not transfer individuals with \"violent or sexual offence criminal backgrounds\""]]], ["Protections on paper", [["Access to asylum procedures", "No"], ["Non-refoulement guarantee", "No"], ["Cites 1951 Refugee Convention", "Yes"], ["Cites 1967 Protocol", "Yes"], ["Cites Convention Against Torture", "Yes"], ["General international-law assurance", "No"]]], ["Money", [["Potential future funding", "Implementation plan to address \"any arrangement of relocation logistics for, and assistance for relocation costs of food, housing, and other related matters\""]]], ["Duration and exit", [["Automatic renewal", "No"], ["Withdrawal or termination", "May discontinue at any time but should endeavor to provide 90 days' written notice"], ["Dispute resolution", "Consult to resolve issues"]]], ["Paperwork", [["Length (pages)", "2"], ["Accompanying plan or annex", "No"], ["Counterpart signatory", "*Signature illegible"], ["Intent to develop operating procedure", "Yes"], ["Acknowledges sovereignty", "No"], ["IOM involved", "No"]]], ["Recorded transfers (1)", [["2026-05-19", "Jamaica, Belize · 3 · Unknown", ["https://www.facebook.com/antiguaobserver/posts/the-government-of-st-kitts-and-nevis-has-confirmed-the-arrival-of-the-first-grou/1470724395074867/"]]]]]}, "sources": ["https://www.thirdcountrydeportationwatch.org/st-kitts-and-nevis", "https://drive.google.com/file/d/1wHD9ZgmB6bhjZhq87ptSqsDeJjgLl2zD/view?usp=drive_link"]},
 {"id": "cx-241", "date": "2025-12-15", "country": "Paraguay", "cat": "security", "title": "US security cooperation with Paraguay", "kicker": "Unknown · Signatory not identified in source", "summary": "Sign Status of Forces Agreement (SOFA) to combat transnational crime, agreed in December 2025 by Secretary of State Marco Rubio and Foreign Minister Ruben Ramirez Lezcano; ratified by Paraguay's Congress and promulgated by President Santiago Pena in March 2026.", "sources": ["https://www.bbc.com/mundo/articles/ce3g01xljp2o"]},
 {"id": "cx-257", "date": "2025-12-16", "country": "Antigua and Barbuda", "cat": "visa", "title": "US partially suspends visa issuance to nationals of Antigua and Barbuda", "kicker": "Unknown · Signatory not identified in source", "summary": "12/16/2025: U.S. partially suspends visa issuance to nationals of Antigua and Barbuda for nonimmigrant and immigrant visas, with limited exceptions. Source: Berkeley HRC/TCR Database.", "sources": ["https://travel.state.gov/content/travel/en/News/visas-news/suspension-of-visa-issuance-to-foreign-nationals-to-protect-the-security-of-the-united-states.html", "https://www.whitehouse.gov/presidential-actions/2025/12/restricting-and-limiting-the-entry-of-foreign-nationals-to-protect-the-security-of-the-united-states/"]},
-{"id": "cx-105", "date": "2025-12-16", "country": "Cameroon", "cat": "health", "title": "US and Cameroon sign $849 million Global Health Security MOU", "kicker": "Brad Smith · Senior Advisor, lead health-MOU negotiator", "summary": "The United States and Cameroon signed a five-year, $849.3 million bilateral health MOU ($399.3M US / $450M Cameroon) under the America First Global Health Strategy, expanding health-security cooperation and safeguarding against infectious-disease and global-health threats. [Berkeley HRC lists U.S. funding as $400,000,000.]", "sources": ["https://www.state.gov/releases/office-of-the-spokesperson/2025/12/safeguarding-global-health-security-in-cameroon-through-the-america-first-global-health-strategy"]},
-{"id": "cx-294", "date": "2025-12-16", "country": "Cameroon", "cat": "health", "title": "US and Cameroon: U.S.-Cameroon Five-Year Health MOU", "kicker": "Ambassador Lamora; Prime Minister Joseph Dion Ngute; Manaouda Malachie", "summary": "U.S.-Cameroon Five-Year Health MOU: A historic five-year agreement to advance durable and resilient health systems in Cameroon through shared investment in commodities, data systems, surveillance, and laboratory capacity. | A formal agreement signed to deepen cooperation and align efforts to advance health systems and protect communities from health threats.", "sources": ["https://cm.usembassy.gov/remarks-by-ambassador-lamora-at-the-mou-signing-ceremony/", "https://cm.usembassy.gov/u-s-and-cameroon-sign-landmark-five-year-health-memorandum-of-understanding-under-the-america-first-global-health-strategy/"]},
+{"id": "cx-105", "date": "2025-12-16", "country": "Cameroon", "cat": "health", "title": "US and Cameroon sign $849 million Global Health Security MOU", "kicker": "Brad Smith · Senior Advisor, lead health-MOU negotiator", "summary": "The United States and Cameroon signed a five-year, $849.3 million bilateral health MOU ($399.3M US / $450M Cameroon) under the America First Global Health Strategy, expanding health-security cooperation and safeguarding against infectious-disease and global-health threats. [Berkeley HRC lists U.S. funding as $400,000,000.]", "sources": ["https://www.state.gov/releases/office-of-the-spokesperson/2025/12/safeguarding-global-health-security-in-cameroon-through-the-america-first-global-health-strategy", "https://cm.usembassy.gov/remarks-by-ambassador-lamora-at-the-mou-signing-ceremony/", "https://cm.usembassy.gov/u-s-and-cameroon-sign-landmark-five-year-health-memorandum-of-understanding-under-the-america-first-global-health-strategy/"]},
 {"id": "cx-289", "date": "2025-12-16", "country": "Uzbekistan", "cat": "security", "title": "U.S. and Uzbekistan sign travel-document fraud cooperation MOU", "kicker": "Unknown · Signatory not identified in source", "summary": "The U.S. Department of State and Uzbekistan's Ministry of Internal Affairs signed a memorandum of understanding to combat the use of fraudulent travel and identity documents.", "sources": ["https://foia.state.gov/_docs/CaseAct/Zip%20file%20of%20Non-Bindings%20reported%202.27.2026.zip"]},
 {"id": "cx-404", "date": "2025-12-17", "country": "Poland", "cat": "security", "title": "Polish National Security Advisor Przydacz meets separately with two State Department officials", "kicker": "Allison M. Hooker · Under Secretary for Political Affairs; Brendan P. Hanrahan · Senior Bureau Official for European and Eurasian Affairs; Marcin Przydacz · Polish National Security Advisor", "summary": "Per the State Department's public schedule: Under Secretary Hooker met with Polish National Security Advisor Marcin Przydacz at 3:00 p.m., and Senior Bureau Official Hanrahan met with him separately at 2:30 p.m., both at the Department of State. Both meetings were closed press; no agreement is publicly recorded.", "sources": ["https://www.state.gov/releases/office-of-the-spokesperson/2025/12/public-schedule-december-17-2025/"]},
 {"id": "cx-295", "date": "2025-12-18", "country": "Cameroon", "cat": "health", "title": "US and Cameroon: America First Global Health Strategy (AFGHS)", "kicker": "Unknown", "summary": "America First Global Health Strategy (AFGHS): A forward-looking vision for U.S. engagement in global health built around protecting Americans, strengthening bilateral relationships, and promoting American innovation.", "sources": ["https://cm.usembassy.gov/u-s-and-cameroon-sign-landmark-five-year-health-memorandum-of-understanding-under-the-america-first-global-health-strategy/"]},
@@ -641,7 +665,6 @@ const DATA = {
 {"id": "vr-Antigua and Barbuda", "date": "2026-01-21", "country": "Antigua and Barbuda", "cat": "visa", "title": "U.S. imposes visa restrictions on Antigua and Barbuda", "kicker": "Department of State · Immigrant-visa pause", "summary": "Immigrant-visa processing paused for nationals of this country under the January 2026 public-charge guidance.", "sources": ["https://travel.state.gov/content/travel/en/News/visas-news/immigrant-visa-processing-updates-for-nationalities-at-high-risk-of-public-benefits-usage.html"]},
 {"id": "vr-Bahamas", "date": "2026-01-21", "country": "Bahamas", "cat": "visa", "title": "U.S. imposes visa restrictions on Bahamas", "kicker": "Department of State · Immigrant-visa pause", "summary": "Immigrant-visa processing paused for nationals of this country under the January 2026 public-charge guidance.", "sources": ["https://travel.state.gov/content/travel/en/News/visas-news/immigrant-visa-processing-updates-for-nationalities-at-high-risk-of-public-benefits-usage.html"]},
 {"id": "vr-Belize", "date": "2026-01-21", "country": "Belize", "cat": "visa", "title": "U.S. imposes visa restrictions on Belize", "kicker": "Department of State · Immigrant-visa pause", "summary": "Immigrant-visa processing paused for nationals of this country under the January 2026 public-charge guidance.", "sources": ["https://travel.state.gov/content/travel/en/News/visas-news/immigrant-visa-processing-updates-for-nationalities-at-high-risk-of-public-benefits-usage.html"]},
-{"id": "vr-Cabo Verde", "date": "2026-01-21", "country": "Cabo Verde", "cat": "visa", "title": "U.S. imposes visa restrictions on Cabo Verde", "kicker": "Department of State · Immigrant-visa pause", "summary": "Immigrant-visa processing paused for nationals of this country under the January 2026 public-charge guidance.", "sources": ["https://travel.state.gov/content/travel/en/News/visas-news/immigrant-visa-processing-updates-for-nationalities-at-high-risk-of-public-benefits-usage.html"]},
 {"id": "cx-258", "date": "2026-01-21", "country": "Cabo Verde", "cat": "visa", "title": "US halts immigrant visas and imposes $15,000 bond for Cabo Verdean travelers", "kicker": "Unknown · Signatory not identified in source", "summary": "Effective 1/21/2026 (announced 1/14/2026): the Trump Administration halted all immigrant visa issuances for nationals from 75 countries, including Cabo Verde. Cabo Verdeans traveling to the U.S. on tourist or business visas must also post a $15,000 refundable bond. Source: Berkeley HRC/TCR Database.", "sources": ["https://travel.state.gov/content/travel/en/News/visas-news/immigrant-visa-processing-updates-for-nationalities-at-high-risk-of-public-benefits-usage.html", "https://www.newsweek.com/us-visa-processing-frozen-countries-list-trump-administration-11359433"]},
 {"id": "vr-Cameroon", "date": "2026-01-21", "country": "Cameroon", "cat": "visa", "title": "U.S. imposes visa restrictions on Cameroon", "kicker": "Department of State · Immigrant-visa pause", "summary": "Immigrant-visa processing paused for nationals of this country under the January 2026 public-charge guidance.", "sources": ["https://travel.state.gov/content/travel/en/News/visas-news/immigrant-visa-processing-updates-for-nationalities-at-high-risk-of-public-benefits-usage.html"]},
 {"id": "vr-Democratic Republic of the Congo", "date": "2026-01-21", "country": "Democratic Republic of the Congo", "cat": "visa", "title": "U.S. imposes visa restrictions on Democratic Republic of the Congo", "kicker": "Department of State · Immigrant-visa pause", "summary": "Immigrant-visa processing paused for nationals of this country under the January 2026 public-charge guidance.", "sources": ["https://travel.state.gov/content/travel/en/News/visas-news/immigrant-visa-processing-updates-for-nationalities-at-high-risk-of-public-benefits-usage.html"]},
@@ -653,7 +676,6 @@ const DATA = {
 {"id": "tr-israel", "date": "2026-01-21", "country": "Israel", "cat": "transfer", "title": "Israel: uncategorized transfers through its airports", "kicker": "No known agreement · Onward transfer", "summary": "Received U.S. removal flights carrying Palestinians; no agreement is known and no category fits the transfers.", "doc": {"form": "", "type": "Uncategorized transfer", "signed": "", "eif": "", "hybrid": false, "pdf": "", "terms": [["Recorded transfers (3)", [["2026-01-21", "Palestinians · 8 · All 8 were forcibly transferred to the West Bank after arriving in Tel Aviv", ["https://www.theguardian.com/us-news/2026/feb/05/revealed-private-jet-owned-by-trump-friend-used-by-ice-to-deport-palestinians-to-west-bank"]], ["2026-06-09", "Palestinians · Unknown · Unknown"], ["2026-06-09", "Russians, other nationalities (?) · Unknown · Unknown (likely given past repatriation of Russians)"]]]]}, "sources": ["https://www.theguardian.com/us-news/2026/feb/05/revealed-private-jet-owned-by-trump-friend-used-by-ice-to-deport-palestinians-to-west-bank", "https://bsky.app/profile/jjindc.bsky.social/post/3mnx3fxaeus2v", "https://bsky.app/profile/iceflightmonitor.bsky.social/post/3mnx5eruojk2i"]},
 {"id": "vr-Jamaica", "date": "2026-01-21", "country": "Jamaica", "cat": "visa", "title": "U.S. imposes visa restrictions on Jamaica", "kicker": "Department of State · Immigrant-visa pause", "summary": "Immigrant-visa processing paused for nationals of this country under the January 2026 public-charge guidance.", "sources": ["https://travel.state.gov/content/travel/en/News/visas-news/immigrant-visa-processing-updates-for-nationalities-at-high-risk-of-public-benefits-usage.html"]},
 {"id": "vr-Kosovo", "date": "2026-01-21", "country": "Kosovo", "cat": "visa", "title": "U.S. imposes visa restrictions on Kosovo", "kicker": "Department of State · Immigrant-visa pause", "summary": "Immigrant-visa processing paused for nationals of this country under the January 2026 public-charge guidance.", "sources": ["https://travel.state.gov/content/travel/en/News/visas-news/immigrant-visa-processing-updates-for-nationalities-at-high-risk-of-public-benefits-usage.html"]},
-{"id": "vr-Kuwait", "date": "2026-01-21", "country": "Kuwait", "cat": "visa", "title": "U.S. imposes visa restrictions on Kuwait", "kicker": "Department of State · Immigrant-visa pause", "summary": "Immigrant-visa processing paused for nationals of this country under the January 2026 public-charge guidance.", "sources": ["https://travel.state.gov/content/travel/en/News/visas-news/immigrant-visa-processing-updates-for-nationalities-at-high-risk-of-public-benefits-usage.html"]},
 {"id": "cx-269", "date": "2026-01-21", "country": "Kuwait", "cat": "visa", "title": "US pauses immigrant visas for Kuwaiti nationals", "kicker": "Unknown · Signatory not identified in source", "summary": "Effective 1/21/2026: the U.S. paused immigrant visas for Kuwaiti nationals. Source: U.S. Embassy in Kuwait / Berkeley HRC/TCR Database.", "sources": ["https://travel.state.gov/content/travel/en/News/visas-news/immigrant-visa-processing-updates-for-nationalities-at-high-risk-of-public-benefits-usage.html", "https://www.newsweek.com/us-visa-processing-frozen-countries-list-trump-administration-11359433"]},
 {"id": "vr-Liberia", "date": "2026-01-21", "country": "Liberia", "cat": "visa", "title": "U.S. imposes visa restrictions on Liberia", "kicker": "Department of State · Immigrant-visa pause", "summary": "Immigrant-visa processing paused for nationals of this country under the January 2026 public-charge guidance.", "sources": ["https://travel.state.gov/content/travel/en/News/visas-news/immigrant-visa-processing-updates-for-nationalities-at-high-risk-of-public-benefits-usage.html"]},
 {"id": "vr-Moldova", "date": "2026-01-21", "country": "Moldova", "cat": "visa", "title": "U.S. imposes visa restrictions on Moldova", "kicker": "Department of State · Immigrant-visa pause", "summary": "Immigrant-visa processing paused for nationals of this country under the January 2026 public-charge guidance.", "sources": ["https://travel.state.gov/content/travel/en/News/visas-news/immigrant-visa-processing-updates-for-nationalities-at-high-risk-of-public-benefits-usage.html"]},
@@ -670,16 +692,13 @@ const DATA = {
 {"id": "cx-410", "date": "2026-03-02", "country": "Democratic Republic of the Congo", "cat": "security", "title": "US sanctions Rwandan Defense Force officials for violating the Washington Accords", "kicker": "U.S. Department of State", "summary": "The United States announced sanctions on the Rwandan Defense Force (RDF) and four senior RDF officials \"for supporting M23 and perpetuating the conflict in eastern DRC in violation of the Washington Accords,\" the U.S.-brokered DRC-Rwanda peace agreement. The State Department said it was \"resolved to uphold the Washington Accords and ensure all parties deliver on the promises of this historic agreement.\"", "sources": ["https://www.facebook.com/DOSAfricanAffairs/"]},
 {"id": "cx-405", "date": "2026-03-17", "country": "Guatemala", "cat": "security", "title": "Deputy Secretary Landau meets Guatemala's foreign and defense ministers", "kicker": "Christopher Landau · Deputy Secretary of State; Carlos Ramiro Martínez · Foreign Minister of Guatemala; Henry Sáenz Ramos · Defense Minister of Guatemala", "summary": "Deputy Secretary Landau meets with Guatemalan Foreign Minister Carlos Ramiro Martínez and Defense Minister Henry Sáenz Ramos at the Department of State, per the State Department's public schedule. No agreement or further detail is publicly recorded from the meeting.", "sources": ["https://www.state.gov/releases/office-of-the-spokesperson/2026/03/public-schedule-march-17-2026/"]},
 {"id": "cx-113", "date": "2026-02-06", "country": "Burundi", "cat": "health", "title": "US and Burundi sign Strategic Health Cooperation MOU", "kicker": "Brad Smith · Senior Advisor, lead health-MOU negotiator", "summary": "The United States and Burundi signed a five-year, $155 million bilateral Strategic Health Cooperation MOU ($129M US / $26M Burundi) under the America First Global Health Strategy, aimed at building health resilience in Burundi. [Berkeley HRC lists U.S. funding as $129,000,000.]", "sources": ["https://www.state.gov/releases/office-of-the-spokesperson/2026/02/building-health-resilience-in-burundi-through-the-america-first-global-health-strategy", "https://bi.usembassy.gov/united-states-and-burundi-sign-strategic-health-cooperation-mou/"]},
-{"id": "cx-292", "date": "2026-02-06", "country": "Burundi", "cat": "health", "title": "US and Burundi: America First Global Health Strategy", "kicker": "Unknown", "summary": "America First Global Health Strategy: A strategic framework guiding U.S. global health cooperation efforts, under which this MOU with Burundi was signed.", "sources": ["https://bi.usembassy.gov/united-states-and-burundi-sign-strategic-health-cooperation-mou/"]},
 {"id": "ag-3", "date": "2026-02-12", "country": "Burundi", "cat": "removal", "title": "Burundi: diplomatic notes on third-country removals", "kicker": "Diplomatic Notes · Removal Arrangement", "summary": "", "doc": {"form": "Diplomatic Notes", "type": "Removal Arrangement", "signed": "12/8/2025; 2/6/2026; 2/12/2026", "eif": "2/12/2026", "hybrid": false, "pdf": "https://drive.google.com/file/d/1mlGc27d0LHwmqrY5luxObjORJHVcMo9A/view?usp=drive_link", "terms": [["Scope and selection", [["Discretion over selection", "Burundi has complete discretion to consider accepting a proposal in whole or in\npart"], ["Excludes people with criminal history", "Yes"], ["Excludes unaccompanied minors", "No"], ["Excludes stateless persons", "No"], ["Other limits", "Agrees to accept \"third-country nationals who raise national security or public safety concerns in the United States\" BUT none with a violent criminal history"]]], ["Protections on paper", [["Access to asylum procedures", "No"], ["Non-refoulement guarantee", "No"], ["Cites 1951 Refugee Convention", "Yes"], ["Cites 1967 Protocol", "Yes"], ["Cites Convention Against Torture", "Yes"], ["General international-law assurance", "Yes"]]], ["Duration and exit", [["Automatic renewal", "No"], ["Withdrawal or termination", "May discontinue at any time by providing written notice"], ["Dispute resolution", "Consult to resolve issues"]]], ["Paperwork", [["Length (pages)", "4, 2, 2 (8 total)"], ["Accompanying plan or annex", "No"], ["Counterpart signatory", "No signature (seal of minister of foreign affairs)"], ["Intent to develop operating procedure", "Yes"], ["Acknowledges sovereignty", "No"], ["IOM involved", "No"]]], ["Recorded transfers (1)", [["2026-08-27", "Cameroon, Angola, Mauritania, Sudan · 12 · Unknown"]]]]}, "sources": ["https://www.thirdcountrydeportationwatch.org/burundi", "https://drive.google.com/file/d/1mlGc27d0LHwmqrY5luxObjORJHVcMo9A/view?usp=drive_link"]},
 {"id": "ag-26", "date": "2026-02-19", "country": "Paraguay", "cat": "removal", "title": "Additional Memorandum Of Understanding Between The Department Of Homeland Security And The Department Of State Of The United States of America, On The One Side, And The National Commission For Stateless Persons And Refugees of the Republic of Paraguay, On The Other Side, Concerning the Transfer of Third Country Nationals", "kicker": "Memorandum of Understanding · Removal Arrangement", "summary": "", "doc": {"form": "Memorandum of Understanding", "type": "Removal Arrangement", "signed": "2/19/2026", "eif": "2/19/2026", "hybrid": false, "pdf": "", "terms": [["Scope and selection", [["Expressed purpose", "Facilitate the transfer of third-country nationals from the United States to Paraguay (1)"], ["Number of transferees", "US intends to recommend no more than 25 individuals per month; Paraguay may exceed this at its discretion (Annex 2)"], ["Nationality / geographic limits", "Third-country nationals from Spanish-speaking countries (Annex 1). Paraguay may decide to accept other nationalities and would inform the US (Annex 2)"], ["Discretion over selection", "US Signatory may propose at its complete discretion; CONARE may accept or reject in whole or in part at its complete discretion (2.1)"], ["Excludes people with criminal history", "Yes — flight manifests are to carry proof of no criminal record beyond immigration violations or similar minor misdemeanours (Annex 3)"], ["Excludes unaccompanied minors", "No"], ["Excludes stateless persons", "No"]]], ["Protections on paper", [["Access to asylum procedures", "No"], ["Non-refoulement guarantee", "Yes (3)"], ["Cites 1951 Refugee Convention", "Yes"], ["Cites 1967 Protocol", "Yes"], ["Cites Convention Against Torture", "Yes"], ["General international-law assurance", "Yes"], ["Additional protection measures", "CONARE intends to provide appropriate immigration status to transferees (2.2)"], ["Conditions during transfer", "Transferees are expected to be accompanied by DHS personnel; Paraguay intends to facilitate entry for them and the flight crew. Paraguay reviews each manifest and no one not listed on it should board or be admitted (Annex 3)"]]], ["Money", [["Potential future funding", "US intends to review the availability of foreign assistance funds for food, housing and related matters (4.3)"]]], ["Duration and exit", [["Automatic renewal", "No"], ["Withdrawal or termination", "Either Signatory may discontinue at any time; sixty days' advance written notice through diplomatic channels is expected (4.2)"], ["Dispute resolution", "Diplomatic consultations between the Signatories (4.1)"]]], ["Paperwork", [["Length (pages)", "5"], ["Accompanying plan or annex", "Yes — “Annex: Procedures for the Transfer of Third-Country Nationals from the United States to Paraguay”"], ["Counterpart signatory", "National Commission for the Stateless and Refugees (CONARE); signature not legible in the released copy"], ["Intent to develop operating procedure", "Yes (4.1)"], ["Acknowledges sovereignty", "No"], ["IOM involved", "Yes"], ["Role of IOM", "US and Paraguay intend to coordinate reception with IOM to meet immediate needs — housing, food, emergency medical care — and to facilitate onward journeys. IOM assistance is expected to be free of cost to Paraguay (Annex 4)"]]], ["Recorded transfers (6)", [["2026-04-23", "Bolivia, Colombia, Ecuador, Spain, the Dominican Republic and El Salvador · 16 · All of the TCNs (16)", ["https://www.theparaguaypost.com/p/the-united-states-deports-migrants-paraguay"]], ["2026-05-21", "Bolivia, Chile, and the Dominican Republic · 10 · Number unknown, but same process as for first group removed", ["https://www.abc.com.py/nacionales/2026/05/21/paraguay-recibe-segundo-grupo-de-expulsados-de-estados-unidos-uno-fue-rechazado-por-antecedentes/"]], ["2026-06-19", "Unknown · 12 · Unknown", ["https://x.com/ICEFlightM/status/2069783314739716099"]], ["2026-07-18", "Unknown · Unknown · Unknown"], ["2026-07-23", "Unknown · 14 · Unknown"], ["2026-08-20", "Ecuador, Costa Rica, Dominica · 25 · Unknown"]]]]}, "sources": []},
 {"id": "cx-121", "date": "2026-02-25", "country": "Panama", "cat": "health", "title": "US and Panama sign first Central America Global Health MOU", "kicker": "Kevin Marino Cabrera · U.S. Ambassador to Panama", "summary": "The United States and Panama signed a three-year, $33.5 million bilateral 'America First' Global Health Strategy MOU ($22.5M US / $11M Panama) — the first such MOU in Central America — building on existing PEPFAR cooperation to strengthen bilateral health security. U.S. Ambassador to Panama Kevin Marino Cabrera stated the funding goes straight to the people of Panama, not bloated NGOs, to address the HIV epidemic and strengthen health security.", "sources": ["https://www.state.gov/releases/office-of-the-spokesperson/2026/02/strengthening-western-hemisphere-health-security-through-the-america-first-global-health-strategy-in-panama", "https://pa.usembassy.gov/the-united-states-and-panama-sign-landmark-bilateral-america-first-global-health-strategy-memorandum-of-understanding/"]},
-{"id": "cx-115", "date": "2026-02-26", "country": "Democratic Republic of the Congo", "cat": "health", "title": "US and DRC sign $1.2 billion Global Health MOU", "kicker": "Brad Smith · Senior Advisor, lead health-MOU negotiator", "summary": "The United States and the Democratic Republic of the Congo signed a five-year, $1.2 billion bilateral health MOU ($900M US / $300M DRC) under the America First Global Health Strategy, framed as promoting DRC 'health sovereignty' and reducing aid dependence; the signing was delayed from the December 2025 African wave before being finalized in February 2026. [Berkeley HRC lists U.S. funding as $900,000,000.]", "sources": ["https://www.state.gov/releases/office-of-the-spokesperson/2026/02/fostering-health-sovereignty-in-the-democratic-republic-of-the-congo-through-the-america-first-global-health-strategy", "https://cd.usembassy.gov/u-s-government-factsheet-health-memorandum-of-understanding/"]},
-{"id": "cx-310", "date": "2026-02-26", "country": "Democratic Republic of the Congo", "cat": "health", "title": "US and DRC sign Bilateral Health Cooperation MOU under America First Global Health Strategy", "kicker": "U.S. Charge D'Affaires Ian McCary; Dr. Roger Kamba; Minister of Public Health", "summary": "Bilateral Health Cooperation Memorandum of Understanding: A five-year, $1.2 billion agreement establishing a framework for global health assistance, co-investment in domestic health expenditures, and the strengthening of national health systems to combat infectious diseases. | This five-year MOU establishes a framework for mutual responsibility to strengthen the Congolese health system, prevent infectious disease spread, and ensure national ownership of health investments. | America First Global Health Strategy: This strategy serves as the overarching framework guiding the bilateral health cooperation and the signing of the new MOU.", "sources": ["https://cd.usembassy.gov/u-s-government-factsheet-health-memorandum-of-understanding/", "https://cd.usembassy.gov/america-first-global-health-strategy-joint-statement-between-the-government-of-the-united-states-of-america-and-the-government-of-the-drc/"]},
+{"id": "cx-115", "date": "2026-02-26", "country": "Democratic Republic of the Congo", "cat": "health", "title": "US and DRC sign $1.2 billion Global Health MOU", "kicker": "Brad Smith · Senior Advisor, lead health-MOU negotiator", "summary": "The United States and the Democratic Republic of the Congo signed a five-year, $1.2 billion bilateral health MOU ($900M US / $300M DRC) under the America First Global Health Strategy, framed as promoting DRC 'health sovereignty' and reducing aid dependence; the signing was delayed from the December 2025 African wave before being finalized in February 2026. [Berkeley HRC lists U.S. funding as $900,000,000.]", "sources": ["https://www.state.gov/releases/office-of-the-spokesperson/2026/02/fostering-health-sovereignty-in-the-democratic-republic-of-the-congo-through-the-america-first-global-health-strategy", "https://cd.usembassy.gov/u-s-government-factsheet-health-memorandum-of-understanding/", "https://cd.usembassy.gov/america-first-global-health-strategy-joint-statement-between-the-government-of-the-united-states-of-america-and-the-government-of-the-drc/"]},
 {"id": "cx-122", "date": "2026-02-26", "country": "Dominican Republic", "cat": "health", "title": "US and Dominican Republic sign Global Health MOU", "kicker": "Brad Smith · Senior Advisor, lead health-MOU negotiator", "summary": "The United States and the Dominican Republic signed a five-year, $60.8 million bilateral health MOU ($46.7M US / $14.1M Dominican Republic) under the America First Global Health Strategy, including more than $6 million in global health security funding to establish a 7-1-7 outbreak detection and response framework and sustain HIV and infectious-disease programs. [Berkeley HRC lists U.S. funding as $46,700,000.]", "sources": ["https://www.state.gov/releases/office-of-the-spokesperson/2026/02/bolstering-infectious-disease-outbreak-prevention-and-response-in-niger-and-the-dominican-republic-through-the-america-first-global-health-strategy"]},
 {"id": "cx-123", "date": "2026-02-27", "country": "El Salvador", "cat": "health", "title": "US and El Salvador sign Global Health MOU", "kicker": "Brad Smith · Senior Advisor, lead health-MOU negotiator", "summary": "The United States and El Salvador signed a five-year, $51.6 million bilateral health MOU ($31.9M US / $19.7M El Salvador) under the America First Global Health Strategy, aimed at sustainable health outcomes and shifting El Salvador from US aid dependency toward jointly financed bilateral health cooperation. [Berkeley HRC lists U.S. funding as $31,900,000.]", "sources": ["https://www.state.gov/releases/office-of-the-spokesperson/2026/02/pursuing-sustainable-health-outcomes-under-the-trump-administrations-america-first-global-health-strategy-in-the-republic-of-guatemala-the-republic-of-guinea-and-the-republic-of-el-salvador"]},
-{"id": "cx-124", "date": "2026-02-27", "country": "Guatemala", "cat": "health", "title": "US and Guatemala sign Global Health MOU", "kicker": "Brad Smith · Senior Advisor, lead health-MOU negotiator", "summary": "The United States and Guatemala signed a five-year, $61.6 million bilateral health MOU ($60M US / $1.6M Guatemala) under the America First Global Health Strategy, transitioning Guatemala toward jointly financed health cooperation and sustainable health outcomes. [Berkeley HRC lists U.S. funding as $60,000,000.]", "sources": ["https://www.state.gov/releases/office-of-the-spokesperson/2026/02/pursuing-sustainable-health-outcomes-under-the-trump-administrations-america-first-global-health-strategy-in-the-republic-of-guatemala-the-republic-of-guinea-and-the-republic-of-el-salvador"]},
-{"id": "cx-325", "date": "2026-02-27", "country": "Guatemala", "cat": "health", "title": "US and Guatemala: Bilateral Health Cooperation Memorandum of Understanding", "kicker": "Charge d'Affaires John Barrett; Minister of Health Dr. Joaquin Barnoya", "summary": "Bilateral Health Cooperation Memorandum of Understanding: This $61.6 million agreement establishes frameworks for sustainable, country-led health systems in Guatemala to strengthen disease detection and response capabilities. [Berkeley HRC lists U.S. funding as $60,000,000.]", "sources": ["https://gt.usembassy.gov/promoting-sustainable-health-outcomes-in-guatemala-under-the-trump-administrations-america-first-global-health-strategy/"]},
+{"id": "cx-124", "date": "2026-02-27", "country": "Guatemala", "cat": "health", "title": "US and Guatemala sign Global Health MOU", "kicker": "Brad Smith · Senior Advisor, lead health-MOU negotiator", "summary": "The United States and Guatemala signed a five-year, $61.6 million bilateral health MOU ($60M US / $1.6M Guatemala) under the America First Global Health Strategy, transitioning Guatemala toward jointly financed health cooperation and sustainable health outcomes. [Berkeley HRC lists U.S. funding as $60,000,000.]", "sources": ["https://www.state.gov/releases/office-of-the-spokesperson/2026/02/pursuing-sustainable-health-outcomes-under-the-trump-administrations-america-first-global-health-strategy-in-the-republic-of-guatemala-the-republic-of-guinea-and-the-republic-of-el-salvador", "https://gt.usembassy.gov/promoting-sustainable-health-outcomes-in-guatemala-under-the-trump-administrations-america-first-global-health-strategy/"]},
 {"id": "un-moldova", "date": "2025-07-01", "country": "Moldova", "cat": "unreleased", "title": "Moldova: removal arrangement reported, text never released", "kicker": "Form unknown · Unreleased", "summary": "Reported through confidential sources and flight records; no public text or public confirmation.", "doc": {"form": "", "type": "Unknown", "signed": "", "eif": "", "hybrid": false, "pdf": "", "terms": [["What is on the record", [["People transferred", "Unknown"], ["Transfer dates", "3/10/2026; 4/30/2026; 6/10/2026"]]], ["Recorded transfers (4)", [["2026-03-10", "Unknown · Unknown · Unknown", ["https://censor.net/en/news/3604915/russians-deported-from-us-and-dropped-off-in-moldova-media-say"]], ["2026-04-30", "Unknown · Unknown · Unknown", ["https://x.com/ICEFlightM/status/2049937368212267133"]], ["2026-06-10", "Unknown · Unknown · Unknown", ["https://bsky.app/profile/iceflightmonitor.bsky.social/post/3mnx5eruojk2i"]], ["2026-08-06", "Unknown · Unknown · Unknown"]]]]}, "sources": []},
 {"id": "cx-126", "date": "2026-03-13", "country": "Honduras", "cat": "health", "title": "US and Honduras sign Global Health MOU", "kicker": "Brad Smith · Senior Advisor, lead health-MOU negotiator", "summary": "The United States and Honduras signed a five-year, $46.5 million bilateral health MOU ($29.6M US / $16.9M Honduras) under the America First Global Health Strategy, focused on strengthening Western-Hemisphere health security and infectious-disease preparedness. [Berkeley HRC lists U.S. funding as $29,600,000.]", "sources": ["https://www.state.gov/releases/office-of-the-spokesperson/2026/03/forging-health-partnerships-under-the-trump-administrations-america-first-global-health-strategy-in-honduras-and-senegal", "https://hn.usembassy.gov/strengthening-western-hemisphere-health-security-through-the-america-first-global-health-strategy-in-honduras/"]},
 {"id": "ag-8", "date": "2026-03-23", "country": "Costa Rica", "cat": "removal", "title": "Memorandum Of Understanding Between The Government Of The United States Of America And The Government Of The Republic Of Costa Rica Concerning The Transfer of Third Country Nationals", "kicker": "Memorandum of Understanding · Removal Arrangement", "summary": "", "doc": {"form": "Memorandum of Understanding", "type": "Removal Arrangement", "signed": "3/23/2026", "eif": "3/23/2026", "hybrid": false, "pdf": "https://drive.google.com/file/d/1WAdFSx2xKnzZozaof36FXrZutaEhbKLR/view?usp=sharing", "terms": [["Scope and selection", [["Number of transferees", "25 per week; CR may exceed number at discretion"], ["Discretion over selection", "CR may accept of reject any individual proposed by US"], ["Excludes people with criminal history", "No"], ["Excludes unaccompanied minors", "No"], ["Excludes stateless persons", "No"]]], ["Protections on paper", [["Access to asylum procedures", "Yes"], ["Non-refoulement guarantee", "Yes"], ["Cites 1951 Refugee Convention", "Yes"], ["Cites 1967 Protocol", "Yes"], ["Cites Convention Against Torture", "Yes"], ["General international-law assurance", "Yes"], ["Additional protection measures", "Acknowledges principle of non-refoulement in general \"assurances\" paragraph."]]], ["Money", [["Purpose of funding", "1. US to fund IOM services (unspecified amount)"]]], ["Duration and exit", [["Automatic renewal", "No"], ["Withdrawal or termination", "May discontinue at any time by providing written notice"], ["Dispute resolution", "Consult to resolve issues"]]], ["Paperwork", [["Length (pages)", "4"], ["Accompanying plan or annex", "Yes"], ["Counterpart signatory", "*Signature illegible"], ["Intent to develop operating procedure", "Yes"], ["Acknowledges sovereignty", "No"], ["IOM involved", "Yes"], ["Role of IOM", "1. US will compensate IOM for services provided to individuals transferred under this agreements\n2. CR will coordinate with IOM to initiate IOM's service. CR will not pay IOM."]]], ["Recorded transfers (21)", [["2025-02-20", "Mainly from Central Asia (Uzbekistan, China and Armenia), also from Afghanistan, Iran, Turkey, Jordan, Russia & Georgia · 135 · 110 (\"voluntary\" return program), 34 left after filing asylum applications, & 57 left voluntarily", ["https://www.nytimes.com/2025/02/20/us/politics/deportation-flights-costa-rica-trump.html"]], ["2025-02-25", "China, Russia, Nepal, Congo, Yemen, Vietnam, and Georgia · 65 · 110 (\"voluntary\" return program), 34 left after filing asylum applications, & 57 left voluntarily", ["https://ticotimes.net/2025/02/26/second-u-s-deportation-flight-lands-in-costa-rica"]], ["2026-04-11", "Albania (1), Cameroon (4), China (2), Guatemala (8), Honduras (4), India (3), Kenya (1), &  Morocco (2) · 25 · Two options, repatriation or aslyum; actual # repatriated unknown", ["https://observador.cr/costa-rica-recibe-25-personas-deportadas-desde-estados-unidos-bajo-acuerdo-migratorio-bilateral/"]], ["2026-04-17", "Brazil (8), Romania (3), Uzbekistan (3), China (2), Azerbaijan (2), Belarus (1), India (1), Ireland (1), and Vietnam (1) · 22 · See above", ["https://amcostarica.com/Costa%20Rica%20News%20Second%20Flight%20Of%20U.S.%20Deported%20Migrants%20Arrives%20In%20Costa%20Rica%20041826.html"]], ["2026-04-24", "Guatemala (5), Brazil (4), Honduras (5), China (3), India (3), Russia (1), Uzbekistan (1), Turkey (1), Bolivia (1), and Romania (1) · 25 · See above (of the first 3 flights in 2026, 18 = assisted voluntary return program as of April 24)", ["https://observador.cr/costa-rica-recibe-tercer-vuelo-con-25-deportados-desde-ee-uu-se-suman-3-costarricenses-que-regresaron-al-pais/"]], ["2026-05-15", "Bolivia (2), Chile (1), China (6), France (1) and Madagascar (2) · 12 · See above", ["https://ticotimes.net/2026/05/17/costa-rica-receives-fourth-u-s-deportation-flight-under-migration-deal"]], ["2026-05-21", "Colombia (6), China (3), Brazil (2), Uzbekistan (2), Senegal (1), and Kyrgystan (1) · 15 · See above", ["https://www.teletica.com/nacional/15-migrantes-ingresan-en-quinto-vuelo-con-deportados-por-ee-uu_409229"]], ["2026-05-28", "Colombia (9), Brazil (8), China (2), Senegal (2), Albania (1), Argentina (1), Mauritania (1), and Nepal (1) · 25 · See above (Costa Rica migration said 25 people had left the country as of May 28)", ["https://www.nacion.com/sucesos/costa-rica-recibe-nuevo-grupo-de-deportados-desde/223ZCMQ3BRB3LHDTNGZNWGQXWM/story/"]], ["2026-06-04", "Colombia (11), Brazil (5), Vietnam (4), Bolivia (2), China (2), and Azerbaijan (1) · 25 · See above", ["https://www.amprensa.com/2026/06/costa-rica-recibe-a-25-migrantes-mas-deportados-desde-estados-unidos"]], ["2026-06-11", "Uknown · 24 · Unknown", ["https://x.com/ICEFlightM/status/2065194145363190053"]], ["2026-06-18", "Unknown · 22 · Unknown", ["https://bsky.app/profile/jjindc.bsky.social/post/3mola7jdkmc2z"]], ["2026-06-25", "Unknown · 12 · Unknown", ["https://x.com/ICEFlightM/status/2070520305575919648"]], ["2026-07-02", "Unknown · 19 · Unknown"], ["2026-07-09", "Unknown · 22 · Unknown", ["https://bsky.app/profile/jjindc.bsky.social/post/3mqa5rlehx226"]], ["2026-07-16", "Unknown · 19 · Unknown"], ["2026-07-24", "Unknown · 23 · Unknown"], ["2026-07-30", "Unknown · 16 · Unknown"], ["2026-08-06", "Unknown · 25 · Unknown"], ["2026-08-13", "Unknown · 25 · Unknown"], ["2026-08-20", "Albania, Argentina, Azerbaijan, Bielorussia, Bolivia, Brazil, Cameroon, Chile, China, Colombia, Cuba, Ecuador, France, Guatemala, Honduras, India, Ireland, Jamaica, Kenya, Kirgystan, Marocco, Mauritania, Mexico, Nepal, Nicaragua, Tanzania, Paraguay, Peru, DRC, Dominican Republic, Roumania, Russia, Saint Vincent, Senegal, Somalia, Tanzania, Turkey, Uzbekistan, Vietnam · 24 · Unknown"], ["2026-08-28", "Unknown · 19 · Unknown"]]]]}, "sources": ["https://www.thirdcountrydeportationwatch.org/costa-rica", "https://drive.google.com/file/d/1WAdFSx2xKnzZozaof36FXrZutaEhbKLR/view?usp=sharing"]},
@@ -729,7 +748,9 @@ LINES.forEach((L) => L.members.forEach((c) => (lineOf[c] = L.id)));
 const kindOf = (cat) => (LAYERS[cat] || {}).kind;
 
 const state = { on: new Set(Object.keys(LAYERS).filter((k) => LAYERS[k].on)),
-                q: "", openId: null, win: null };   // win = the zoomed time window, null = everything
+                q: "", openId: null, win: null,     // win = the zoomed time window, null = everything
+                view: null };                       // view = the open region's id, null = every region
+const slug = (L) => L.label.toLowerCase().replace(/[^a-z]+/g, "-");   // #latin-america
 const live = (e) => state.on.has(e.cat);
 
 /* Buckets, decided once. */
@@ -738,6 +759,21 @@ const stationsAll = ALL.filter((e) => kindOf(e.cat) === "station" && !IS_GLOBAL(
 const ticksAll    = ALL.filter((e) => kindOf(e.cat) === "tick" && e.date && !IS_GLOBAL(e));
 const dotsAll     = ALL.filter((e) => kindOf(e.cat) === "dot" && e.date && !IS_GLOBAL(e));
 const globalsAll  = ALL.filter((e) => IS_RULE(e) && e.date);
+
+/* The chart's rows: one per region, or, with a region open, one per country in
+   it. Built from the whole dataset, never the filtered subset, so the order
+   holds still when a chip is clicked. Countries run in the order of their first
+   arrangement, so the sequence reads top to bottom; undated ones follow, and
+   countries with no arrangement at all go last. */
+function rowsNow() {
+  const R = LINES.find((L) => L.id === state.view);
+  if (!R) return LINES.map((L) => ({ ...L, has: (e) => lineOf[e.country] === L.id }));
+  const first = (c) => stationsAll.filter((e) => e.country === c).map((e) => e.date || "9999").sort()[0] || "~";
+  return [...R.members]
+    .sort((a, b) => (first(a) < first(b) ? -1 : first(a) > first(b) ? 1 : a.localeCompare(b)))   // plain order: "~" after digits
+    .map((c) => ({ id: `c-${c}`, country: c, label: SHORT[c] || c, colour: R.colour,
+                   has: (e) => e.country === c }));
+}
 
 /* The time domain is the whole dataset, always — never the filtered subset.
    If it moved with the chips, switching a layer on would slide every mark
@@ -790,27 +826,17 @@ const textWidth = (t, font = NAME_FONT) => { measurer.font = font; return measur
 /* Regional labels sit in the left gutter; the gutter is sized to the longest
    one plus its letter-spacing, so nothing is ever clipped. */
 const lineLabel = (L, narrow) => (narrow ? L.short : L.label).toUpperCase();
-const gutter = (narrow) => Math.ceil(Math.max(...LINES.map((L) => {
-  const t = lineLabel(L, narrow);
-  return textWidth(t, LINE_FONT) + t.length * 1.2;
-}))) + (narrow ? 26 : 58);
+const rowLabel = (L) => `${L.label} ›`;       // a country row's name, which opens its card
+const gutter = (rows, narrow) => Math.ceil(Math.max(...rows.map((L) => L.country
+  ? textWidth(rowLabel(L))
+  : textWidth(lineLabel(L, narrow), LINE_FONT) + lineLabel(L, narrow).length * 1.2
+), ...LINES.filter((L) => L.id === state.view).map((L) =>   // the open region's title
+  textWidth(lineLabel(L, narrow), LINE_FONT) + lineLabel(L, narrow).length * 1.2))) + (narrow ? 26 : 58);
 
-/* Give every station a side (above or below the line) and a tier, so no two
-   labels on the same side and tier overlap horizontally. */
-function placeLabels(items, x, pad = 7) {
-  const lanes = { up: [], down: [] };
-  const placed = new Map();
-  [...items].sort((a, b) => x(a) - x(b)).forEach((e, i) => {
-    const side = i % 2 === 0 ? "up" : "down";
-    const w = Math.max(textWidth(SHORT[e.country] || e.country), 46);
-    const lane = lanes[side];
-    let tier = 0;
-    while (lane[tier] !== undefined && lane[tier] > x(e) - w / 2 - pad) tier++;
-    lane[tier] = x(e) + w / 2;
-    placed.set(e.id, { side, tier });
-  });
-  return placed;
-}
+/* Short names for the arrangement kinds, for the labels on a country's row. */
+const KIND_SHORT = { aca: "Asylum cooperation", removal: "Removal agreement",
+                     unreleased: "Never published", transfer: "Transfers, no agreement" };
+
 </script>
 
 <script>
@@ -818,8 +844,8 @@ function placeLabels(items, x, pad = 7) {
 const chart = $("#chart");
 let geom = { plotL: 0, plotR: 0 };            // filled by draw(), read by the zoom handlers
 
-/* Every mark is a button to a screen reader, so every mark needs a name. The
-   SVG text beside it is only the country, which on its own says nothing. */
+/* Every mark is a button to a screen reader, so every mark needs a name, and
+   on a region line nothing beside it says which country it is. */
 const markName = (e) => [
   IS_GLOBAL(e) || e.members ? e.title : e.country,
   e.date ? longDate(e.date) : "no date on record",
@@ -860,18 +886,25 @@ function draw() {
   /* draw() throws the SVG away and builds a new one, which would drop keyboard
      focus on the floor every resize, filter change and zoom step. */
   const hadFocus = chart.contains(document.activeElement);
-  const keepId = hadFocus && document.activeElement.closest
-    ? (document.activeElement.closest(".station") || {}).dataset : null;
+  const focused = hadFocus && document.activeElement.closest
+    ? document.activeElement.closest(".station, .region, .country") : null;
+  const keepSel = focused && ["id", "region", "card"].filter((k) => focused.dataset[k] != null)
+    .map((k) => `[data-${k}="${CSS.escape(focused.dataset[k])}"]`)[0];
 
   setType();
-  const box = chart.getBoundingClientRect();
-  const W = box.width;                         // the chart is exactly its box:
-  const H = box.height;                        // it compresses rather than scrolls
+  const rows = rowsNow();
+  const OPEN = LINES.find((L) => L.id === state.view);
+  chart.classList.toggle("rows", !!OPEN);
+  const W = chart.clientWidth;                 // the region view compresses rather than
+  const H = chart.clientHeight;                // scrolls; a country view may scroll
 
   /* On a phone the gutter and the undated column between them ate the plot,
      leaving ~40px of timeline. Both shrink; the region names go abbreviated. */
   const NARROW = W < 640;
-  const M = { top: 36, right: NARROW ? 10 : 26, bottom: 26, left: gutter(NARROW) };
+  /* top: the year marks sit 26px above the axis and are 17px tall; at 36 their
+     tops were cut off by the frame. */
+  const M = { top: 44, right: NARROW ? 10 : 26, bottom: 26,
+              left: Math.max(gutter(rows, NARROW), OPEN ? $("#back").offsetWidth + 10 : 0) };
   /* The undated column is reserved whenever the dataset has undated items, on
      or off. Reserving it only for live ones made the whole x-axis rescale the
      moment a chip was toggled. */
@@ -904,60 +937,33 @@ function draw() {
   const gGlobals = globalsAll.filter(inWin);
   const POLICY_H = gGlobals.length ? 30 * TS : 0;
 
-  /* Lane heights follow how crowded each line is: labels are placed first,
-     then every line gets the room its label tiers actually need. A line with
-     one station does not get the same band as Africa's fourteen. */
-  const placedBy = {}, tiers = {}, need = {};
-  LINES.forEach((L) => {
-    const mine = gStations.filter((e) => lineOf[e.country] === L.id);
-    const dated = mine.filter((e) => e.date);
-    const placed = placeLabels(dated, (e) => X(e.date));
-    mine.filter((e) => !e.date).forEach((e, i) => placed.set(e.id, { side: i % 2 === 0 ? "up" : "down", tier: 0 }));
-    placedBy[L.id] = placed;
-    let up = -1, down = -1;
-    placed.forEach((p) => { if (p.side === "up") up = Math.max(up, p.tier); else down = Math.max(down, p.tier); });
-    tiers[L.id] = { up, down, dots: gDots.some((e) => lineOf[e.country] === L.id) };
+  /* Every row gets the same compact band: a strip above the line (a country's
+     arrangement labels, or a region's count) and, when the row has any, the
+     rail for the wider record below it. Sized from the window, never the chips. */
+  const need = {};
+  rows.forEach((L) => {
+    const above = 30 * TS, below = (gDots.some(L.has) ? 31 : 15) * TS;
+    need[L.id] = { above, below, total: above + below };
   });
-
-  /* Lane sizes: their natural height first, then a modest squeeze if the box
-     is short, and only if that is not enough does the chart grow and scroll. */
-  const laneSizes = (base, step, dates = true) => {
-    const out = {};
-    LINES.forEach((L) => {
-      const t = tiers[L.id];
-      const above = t.up < 0 ? 12 : base + (dates ? 12 * TS : 2) + t.up * step;
-      const below = (t.down < 0 ? 12 : base + (dates ? 15 * TS : 5) + t.down * step) + (t.dots ? 17 : 0);
-      out[L.id] = { above, below, total: above + below };
-    });
-    return out;
-  };
   const avail = H - M.top - M.bottom - POLICY_H;
-  const fit = (dates) => {
-    const sizes = laneSizes(17, 23, dates);
-    return avail / LINES.reduce((s, L) => s + sizes[L.id].total, 0);
-  };
-  /* Squeeze to fit the box. Station dates are the first thing sacrificed when
-     the box is short — they stay in the tooltip and the panel. */
-  let showDates = true, k = fit(true);
-  if (k < 0.78) { showDates = false; k = fit(false); }
-  k = Math.min(1, Math.max(0.5, k));
-  const BASE = 17 * k, STEP = 23 * k;
-  Object.assign(need, laneSizes(BASE, STEP, showDates));
-  let totalNeed = LINES.reduce((s, L) => s + need[L.id].total, 0);
-  /* Very short boxes: scale the lanes to the space that exists. Labels may
-     crowd, but no region is ever clipped off the bottom of the frame. */
-  if (totalNeed > avail) {
+  let totalNeed = rows.reduce((s, L) => s + need[L.id].total, 0);
+  /* Very short boxes: scale the region lanes to the space that exists, so no
+     region is ever clipped off the bottom of the frame. A country view scrolls
+     instead: fifteen countries do not survive a squeeze. */
+  if (!OPEN && totalNeed > avail) {
     const shrink = avail / totalNeed;
-    LINES.forEach((L) => {
+    rows.forEach((L) => {
       need[L.id] = { above: need[L.id].above * shrink, below: need[L.id].below * shrink,
                      total: need[L.id].total * shrink };
     });
     totalNeed = avail;
   }
-  const slack = Math.max(0, (H - M.top - M.bottom - POLICY_H) - totalNeed) / LINES.length;
+  const SH = Math.max(H, M.top + POLICY_H + totalNeed + M.bottom);   // drawn height
+  /* Spare room is shared out, but four countries should not float 100px apart. */
+  const slack = Math.min(Math.max(0, avail - totalNeed) / rows.length, OPEN ? 24 * TS : Infinity);
   const lineY = {};
   let cursor = M.top + POLICY_H;
-  LINES.forEach((L) => {
+  rows.forEach((L) => {
     cursor += need[L.id].above + slack / 2;
     lineY[L.id] = cursor;
     cursor += need[L.id].below + slack / 2;
@@ -980,24 +986,37 @@ function draw() {
   const mark = (e) => add("g", { class: "station", "data-id": e.id, "data-country": e.countries || e.country || "",
     tabindex: "0", role: "button", "aria-label": markName(e) });
 
+  /* The months, the policy rail and the column heads live in `head`, drawn
+     last and moved down by the scroll offset, so a scrolling country view
+     keeps its time axis. Its paper backing hides the rows passing under it. */
+  const HEAD_H = M.top + POLICY_H;
+  const head = document.createElementNS(SVGNS, "g");
+  head.setAttribute("class", "pinned");
+  add("rect", { x: 0, y: 0, width: W, height: HEAD_H, fill: "var(--paper)" }, head);
+
   /* ---- month grid, year marks ---- */
   const m = new Date(t0.getFullYear(), t0.getMonth() + 1, 1);
   while (m < t1) {
     const mx = X(`${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, "0")}-01`);
     const newYear = m.getMonth() === 0;
-    add("line", { x1: mx, y1: M.top - (newYear ? 22 : 6), x2: mx, y2: H - M.bottom,
-      stroke: newYear ? "var(--rule)" : "var(--rule-2)", "stroke-width": 1 });
+    const grid = { x1: mx, x2: mx, stroke: newYear ? "var(--rule)" : "var(--rule-2)", "stroke-width": 1 };
+    add("line", { ...grid, y1: HEAD_H, y2: SH - M.bottom });
+    add("line", { ...grid, y1: M.top - (newYear ? 22 : 6), y2: HEAD_H }, head);
     if (mx < plotR - (NARROW ? 42 : 26) * TS) text(MONTH[m.getMonth()].toUpperCase(), { x: mx + 5, y: M.top - 12, fill: "var(--ink-3)",
-      style: `font-family:var(--mono);font-size:${T.axis}px;letter-spacing:.13em` });
+      style: `font-family:var(--mono);font-size:${T.axis}px;letter-spacing:.13em` }, head);
     if (newYear) text(m.getFullYear(), { x: mx + 5, y: M.top - 26, fill: "var(--ink)",
-      style: `font-family:var(--display);font-size:${T.year}px;font-weight:600` });
+      style: `font-family:var(--display);font-size:${T.year}px;font-weight:600` }, head);
     m.setMonth(m.getMonth() + 1);
   }
   const firstJan = new Date(t0.getFullYear() + (t0.getMonth() ? 1 : 0), 0, 1);
   if (firstJan > t1 || X(`${firstJan.getFullYear()}-01-01`) - plotL > 52) {
     text(t0.getMonth() ? t0.getFullYear() : t0.getFullYear(), { x: plotL, y: M.top - 26, fill: "var(--ink)",
-      style: `font-family:var(--display);font-size:${T.year}px;font-weight:600` });
+      style: `font-family:var(--display);font-size:${T.year}px;font-weight:600` }, head);
   }
+  /* The open region names itself where the region names used to be. */
+  /* Under the All regions button, which takes the top of the gutter. */
+  if (OPEN) text(lineLabel(OPEN, NARROW), { x: plotL - (NARROW ? 18 : 46), y: M.top + 2, "text-anchor": "end",
+    fill: OPEN.colour, style: `font-family:var(--mono);font-size:${T.line}px;font-weight:600;letter-spacing:.12em` }, head);
 
   /* ---- orders that hit many countries at once ---- */
   /* One triangle per order on a rail of its own. Two land on 01 Jan and two
@@ -1008,10 +1027,10 @@ function draw() {
     const railY = M.top + POLICY_H * 0.58;
     const POL = LAYERS.policy.colour;
     add("line", { x1: plotL - (NARROW ? 12 : 34), y1: railY, x2: plotR + 12, y2: railY,
-      stroke: POL, "stroke-width": 1, opacity: .2 });
+      stroke: POL, "stroke-width": 1, opacity: .2 }, head);
     text(NARROW ? "POLICY" : "U.S. POLICY", { x: plotL - (NARROW ? 18 : 46), y: railY + 4,
       "text-anchor": "end", fill: POL,
-      style: `font-family:var(--mono);font-size:${T.line}px;font-weight:600;letter-spacing:.12em` });
+      style: `font-family:var(--mono);font-size:${T.line}px;font-weight:600;letter-spacing:.12em` }, head);
     const sameDay = {};
     globals.forEach((e) => (sameDay[e.date] = sameDay[e.date] || []).push(e));
     Object.values(sameDay).forEach((day) => {
@@ -1019,6 +1038,7 @@ function draw() {
       day.forEach((e, i) => {
         const dx = X(e.date) + (i - (day.length - 1) / 2) * step;
         const g = mark(e);
+        head.appendChild(g);
         add("path", { d: dotPath("triangle", dx, railY, DOT_R * 1.15), fill: POL,
           stroke: "var(--paper)", "stroke-width": 1.1 }, g);
         hit(g, dx, railY, 16, 20);
@@ -1029,15 +1049,17 @@ function draw() {
   /* ---- the undated column ---- */
   const undatedX = W - M.right - UNDATED / 2;
   if (UNDATED) {
-    add("line", { x1: plotR + (NARROW ? 12 : 26), y1: M.top - 22, x2: plotR + 26, y2: H - M.bottom, stroke: "var(--rule)", "stroke-width": 1 });
+    const x1 = plotR + (NARROW ? 12 : 26), x2 = plotR + 26;
+    add("line", { x1, y1: HEAD_H, x2, y2: SH - M.bottom, stroke: "var(--rule)", "stroke-width": 1 });
+    add("line", { x1, y1: M.top - 22, x2, y2: HEAD_H, stroke: "var(--rule)", "stroke-width": 1 }, head);
     text(NARROW ? "NO DATE" : "NO DATE ON RECORD", { x: undatedX, y: M.top - 12, "text-anchor": "middle", fill: "var(--ink-3)",
-      style: `font-family:var(--mono);font-size:${T.small}px;letter-spacing:.11em` });
+      style: `font-family:var(--mono);font-size:${T.small}px;letter-spacing:.11em` }, head);
   }
 
-  /* ---- one regional line at a time ---- */
-  LINES.forEach((L) => {
+  /* ---- one row at a time: a region, or a country of the open region ---- */
+  rows.forEach((L) => {
     const y = lineY[L.id];
-    const mine = gStations.filter((e) => lineOf[e.country] === L.id);
+    const mine = gStations.filter(L.has);
     const xs = mine.filter((e) => e.date).map((e) => X(e.date));
     const x0 = xs.length ? Math.min(...xs) : plotL;
     const x1 = xs.length ? Math.max(...xs) : plotL;
@@ -1045,8 +1067,35 @@ function draw() {
     add("line", { x1: plotL - (NARROW ? 12 : 34), y1: y, x2: x0, y2: y, stroke: L.colour, "stroke-width": 3, opacity: .22 });
     if (xs.length) add("line", { x1: x0, y1: y, x2: x1, y2: y, stroke: L.colour, "stroke-width": 3.5 });
     add("line", { x1: x1, y1: y, x2: plotR + 12, y2: y, stroke: L.colour, "stroke-width": 3, opacity: .22 });
-    text(lineLabel(L, NARROW), { x: plotL - (NARROW ? 18 : 46), y: y + 4, "text-anchor": "end", fill: L.colour,
-      style: `font-family:var(--mono);font-size:${T.line}px;font-weight:600;letter-spacing:.12em` });
+    const gx = plotL - (NARROW ? 18 : 46);
+    if (L.country) {
+      /* The country's name is the way into its card. */
+      const g = add("g", { class: "country", "data-card": L.country, tabindex: "0", role: "button",
+        "aria-label": `${L.country}: open the country card` });
+      const t = text(rowLabel(L), { x: gx, y: y + 4, "text-anchor": "end", fill: "var(--ink)",
+        style: `font-family:var(--body);font-size:${T.name}px;font-weight:600` }, g);
+      const tw = textWidth(rowLabel(L));
+      add("rect", { class: "hit", x: gx - tw - 4, y: y - 12, width: tw + 8, height: 24 }, g);
+    } else {
+      /* A region name is a button that opens the region, drawn as one, because
+         nothing else tells a reader it can be opened. */
+      const n = L.members.length, countries = `${n} ${n === 1 ? "country" : "countries"}`;
+      const g = add("g", { class: "region", "data-region": L.id, tabindex: "0", role: "button",
+        "aria-label": `${L.label}: show its ${countries}` });
+      const label = lineLabel(L, NARROW);
+      const bw = textWidth(label, LINE_FONT) + label.length * 1.2 + 12;
+      add("rect", { class: "btn", x: gx - bw + 6, y: y - 11 * TS, width: bw, height: 22 * TS, rx: 2, "stroke-width": 1 }, g);
+      text(label, { x: gx, y: y + 4, "text-anchor": "end", fill: L.colour,
+        style: `font-family:var(--mono);font-size:${T.line}px;font-weight:600;letter-spacing:.12em` }, g);
+      /* The names wait until the region is opened; over the line, only how much
+         is on it. It counts what is painted, so it follows the chips. Same
+         button again for the pointer, but one tab stop is enough. */
+      const items = [stations, ticks, dots].reduce((s, set) => s + set.filter(L.has).length, 0);
+      const strip = add("g", { class: "region", "data-region": L.id, "aria-hidden": "true" });
+      const count = `${items} ${items === 1 ? "ITEM" : "ITEMS"} · ${countries.toUpperCase()} ▸`;
+      text(count, { x: (plotL + plotR) / 2, y: y - 12 * TS, "text-anchor": "middle", fill: L.colour,
+        style: `font-family:var(--mono);font-size:${T.small}px;font-weight:500;letter-spacing:.08em` }, strip);
+    }
 
     /* Restriction ticks, straddling the line. They arrive in batches -- one
        proclamation pauses twenty countries on a single day -- so as one tick
@@ -1054,9 +1103,12 @@ function draw() {
        invisible and unreachable, and the line claiming a single restriction
        where there were nine. One mark per date and category instead, carrying
        its count; the panel lists who is in it. */
+    /* On a country's row there is nothing to batch: each restriction is its own tick. */
     const batches = {};
-    ticks.filter((e) => lineOf[e.country] === L.id)
-         .forEach((e) => (batches[e.date + "|" + e.cat] = batches[e.date + "|" + e.cat] || []).push(e));
+    ticks.filter(L.has).forEach((e) => {
+      const key = L.country ? e.id : e.date + "|" + e.cat;
+      (batches[key] = batches[key] || []).push(e);
+    });
     const sameDay = {};
     Object.values(batches).forEach((b) => (sameDay[b[0].date] = sameDay[b[0].date] || []).push(b));
     Object.values(sameDay).forEach((day) => {
@@ -1087,7 +1139,7 @@ function draw() {
     /* the wider record, on a rail at the foot of the lane so it never fights
        with the station labels above it */
     const rail = y + need[L.id].below - 7;
-    const lineDots = dots.filter((e) => lineOf[e.country] === L.id);
+    const lineDots = dots.filter(L.has);
     if (lineDots.length) {
       add("line", { x1: plotL - (NARROW ? 12 : 34), y1: rail, x2: plotR + 12, y2: rail, stroke: L.colour, "stroke-width": 1, opacity: .2 });
       lineDots.forEach((e) => {
@@ -1099,17 +1151,13 @@ function draw() {
       });
     }
 
-    /* the arrangements themselves, using the placement pass from above */
-    const placed = placedBy[L.id];
-    mine.filter(live).forEach((e) => {
+    /* the arrangements themselves */
+    let labelEnd = -Infinity;                  // a country row's labels, left to right
+    mine.filter(live).sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999")).forEach((e) => {
       const cx = e.date ? X(e.date) : undatedX;
-      const { side, tier } = placed.get(e.id);
-      const dir = side === "up" ? -1 : 1;
-      const off = BASE + tier * STEP;
       const r = RADIUS[e.cat];
       const g = mark(e);
 
-      add("line", { x1: cx, y1: y, x2: cx, y2: y + dir * (off - 6), stroke: L.colour, "stroke-width": 1, opacity: .38 }, g);
       const style = LAYERS[e.cat].style;
       if (style === "ring") {
         add("circle", { cx, cy: y, r, fill: "var(--paper)", stroke: L.colour, "stroke-width": 2.6 }, g);
@@ -1121,26 +1169,34 @@ function draw() {
       } else {
         add("circle", { cx, cy: y, r, fill: "var(--paper)", stroke: L.colour, "stroke-width": 1.6, "stroke-dasharray": "1.5 2" }, g);
       }
-
-      const ty = y + dir * off;
-      text(SHORT[e.country] || e.country, {
-        x: cx, y: side === "up" ? ty : ty + 4 * TS, "text-anchor": "middle", fill: "var(--ink)",
-        style: `font-family:var(--body);font-size:${T.name}px;font-weight:600`,
-      }, g);
-      if (e.date && showDates) text(shortDate(e.date), {
-        x: cx, y: side === "up" ? ty - 11 * TS : ty + 16 * TS, "text-anchor": "middle", fill: "var(--ink-3)",
-        style: `font-family:var(--mono);font-size:${T.date}px;letter-spacing:.04em`,
-      }, g);
       hit(g, cx, y, 18, 18);
+
+      if (!L.country) return;
+      /* The row already names the country, so the label says what and when.
+         Kept inside the frame at the right edge; dropped (the tooltip still has
+         it) if it would run into the label before it. */
+      const kind = KIND_SHORT[e.cat], when = e.date ? `  ${shortDate(e.date)} ${e.date.slice(0, 4)}` : "";
+      const DATE_FONT = `400 ${T.date}px 'IBM Plex Mono', monospace`;
+      const lw = textWidth(kind) + (when ? textWidth(when, DATE_FONT) : 0);
+      const lx = Math.max(plotL, Math.min(cx - 8, W - M.right - lw));
+      if (lx <= labelEnd + 8) return;
+      const t = text(kind, { x: lx, y: y - 13 * TS, fill: "var(--ink)",
+        style: `font-family:var(--body);font-size:${T.name}px;font-weight:600;paint-order:stroke;stroke:var(--paper);stroke-width:3px;stroke-linejoin:round` }, g);
+      const d = add("tspan", { fill: "var(--ink-3)",
+        style: `font-family:var(--mono);font-size:${T.date}px;font-weight:400` }, t);
+      d.textContent = when;
+      labelEnd = lx + lw;
     });
   });
 
-  svg.setAttribute("width", W); svg.setAttribute("height", H);
-  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.appendChild(head);
+  svg.setAttribute("width", W); svg.setAttribute("height", SH);
+  svg.setAttribute("viewBox", `0 0 ${W} ${SH}`);
   chart.querySelectorAll("svg, .empty").forEach((n) => n.remove());
   chart.insertBefore(svg, chart.firstChild);
+  pinHead();
   if (hadFocus) {
-    const back = keepId && keepId.id && svg.querySelector(`[data-id="${CSS.escape(keepId.id)}"]`);
+    const back = keepSel && svg.querySelector(keepSel);
     (back || chart).focus({ preventScroll: true });
   }
   if (!stations.length && !ticks.length && !dots.length) {
@@ -1153,6 +1209,13 @@ function draw() {
   }
   applySearch();
 }
+
+/* Keep the axis on screen while a country view scrolls under it. */
+const pinHead = () => {
+  const head = chart.querySelector(".pinned");
+  if (head) head.setAttribute("transform", `translate(0 ${chart.scrollTop})`);
+};
+chart.addEventListener("scroll", pinHead, { passive: true });
 
 /* --- filter chips and legend, both built from LAYERS --------------------- */
 function symbol(L, colour = "#334F68") {
@@ -1194,11 +1257,16 @@ function buildFilters() {
    height no longer depends on the filter state. */
 function drawLegend() {
   $("#legend").innerHTML =
-    `<span class="key">Each line is a region.</span>` +
+    /* Same two keys in both views, of about the same length, so the footer
+       does not change height when a region is opened. */
+    (state.view
+      ? `<span class="key">Each line is a country. Click its name for the country card.</span>` +
+        `<span class="key">Click any mark for its record.</span>`
+      : `<span class="key">Each line is a region. Click its name to see its countries.</span>` +
     /* The counted block is the one mark on the map whose meaning is not in the
        chips: a reader has to be told that "9" is nine countries, not nine of
        anything else. */
-    `<span class="key">A numbered block is that many countries restricted on one day.</span>` +
+        `<span class="key">A numbered block is that many countries restricted on one day.</span>`) +
     `<span class="key">Drag to pan, ⌘/Ctrl-scroll to zoom.</span>` +
     `<a class="credit" href="https://humanrights.berkeley.edu/" target="_blank" rel="noopener">
        <img src="${LOGO}" alt="Human Rights Center" width="182" height="24"></a>` +
@@ -1253,23 +1321,68 @@ function factList(pairs) {
   return rows ? `<dl class="facts">${rows}</dl>` : "";
 }
 
-function openPanel(id) {
-  const e = byId.get(id);
-  if (!e) return;
+function showPanel(id, tag, colour, title, meta, body) {
   /* Remember where the reader was so Escape puts them back. */
   if (!state.openId) state.returnTo = document.activeElement;
   state.openId = id;
+  $("#p-tag").textContent = tag;
+  $("#p-tag").style.color = colour;
+  $("#p-title").textContent = title;
+  $("#p-meta").textContent = meta;
+  $("#panel-body").innerHTML = body;
+  $("#panel-body").scrollTop = 0;
+  $("#panel").hidden = false;
+  /* preventScroll is load-bearing. The focus lands while the panel is still
+     parked at translateX(101%), so without it the browser scrolls an ancestor
+     to reveal a button that is about to slide into view on its own — and drags
+     the chart along with it. */
+  requestAnimationFrame(() => {
+    $("#panel").classList.add("open");
+    $("#panel-close").focus({ preventScroll: true });
+  });
+}
+
+/* A recorded-transfers ledger has one row per flight. */
+const transfers = (e) => {
+  const g = ((e.doc || {}).terms || []).find(([name]) => name.startsWith("Recorded transfers"));
+  return g ? g[1].length : 0;
+};
+
+/* The country card: everything on record for one country, grouped the way the
+   chart draws it. Built from DATA alone, like the rest of the page. */
+function openCountry(country) {
+  const R = LINES.find((L) => L.id === lineOf[country]);
+  if (!R) return;
+  const mine = DATA.events.filter((e) => e.country === country)
+    .sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999"));
+  const group = (title, kinds) => {
+    const items = mine.filter((e) => kinds.includes(kindOf(e.cat)));
+    return items.length ? `<p class="p-section">${title}</p><ul class="p-also">` + items.map((e) => {
+      const n = transfers(e);
+      return `<li><button type="button" data-goto="${esc(e.id)}"><span class="d">${e.date
+        ? `${esc(shortDate(e.date))} ${e.date.slice(0, 4)}` : "No date"}</span>${esc(e.title)}${n
+        ? ` <span class="d">· ${n} recorded ${n === 1 ? "transfer" : "transfers"}</span>` : ""}</button></li>`;
+    }).join("") + `</ul>` : "";
+  };
+  const deals = mine.filter((e) => kindOf(e.cat) === "station").length;
+  showPanel(`card:${country}`, `${R.label} · Country card`, R.colour, country,
+    `${deals} ${deals === 1 ? "arrangement" : "arrangements"}  ·  ${mine.length - deals} other items on record`,
+    group("Arrangements", ["station"]) +
+    group("Visa restrictions and travel bans", ["tick"]) +
+    group("Also on the record", ["dot"]));
+}
+
+function openPanel(id) {
+  const e = byId.get(id);
+  if (!e) return;
 
   const L = LAYERS[e.cat] || {};
   const colour = L.colour || (LINES.find((x) => x.id === lineOf[e.country]) || {}).colour || "#334F68";
-  $("#p-tag").textContent = L.label || "On the record";
-  $("#p-tag").style.color = colour;
-  $("#p-title").textContent = e.title;
-  $("#p-meta").textContent = [e.date ? longDate(e.date) : "No public date",
-    IS_GLOBAL(e) ? (e.scope || "Applies to every country") : e.country].join("  ·  ");
-
   const d = e.doc || {};
-  let body = "";
+  /* Every single country's item leads to that country's card. */
+  let body = lineOf[e.country]
+    ? `<button type="button" class="p-card" data-card="${esc(e.country)}">Everything on record for ${esc(e.country)} ›</button>`
+    : "";
   /* A batch mark stands for its members; the list is the content. */
   if (e.members) body += `<p class="p-section">The ${e.members.length} countries</p><ul class="p-also">` +
     e.members.map((id) => `<li><button type="button" data-goto="${esc(id)}">${esc(byId.get(id).country)}</button></li>`).join("") +
@@ -1311,17 +1424,9 @@ function openPanel(id) {
       `</ul>`;
   }
 
-  $("#panel-body").innerHTML = body;
-  $("#panel-body").scrollTop = 0;
-  $("#panel").hidden = false;
-  /* preventScroll is load-bearing. The focus lands while the panel is still
-     parked at translateX(101%), so without it the browser scrolls an ancestor
-     to reveal a button that is about to slide into view on its own — and drags
-     the chart along with it. */
-  requestAnimationFrame(() => {
-    $("#panel").classList.add("open");
-    $("#panel-close").focus({ preventScroll: true });
-  });
+  showPanel(id, L.label || "On the record", colour, e.title,
+    [e.date ? longDate(e.date) : "No public date",
+     IS_GLOBAL(e) ? (e.scope || "Applies to every country") : e.country].join("  ·  "), body);
 }
 
 function closePanel() {
@@ -1336,20 +1441,62 @@ function closePanel() {
 }
 
 $("#panel-body").addEventListener("click", (ev) => {
-  const b = ev.target.closest("[data-goto]");
-  if (b) openPanel(b.dataset.goto);
+  const b = ev.target.closest("[data-goto], [data-card]");
+  if (b && b.dataset.card) openCountry(b.dataset.card);
+  else if (b) openPanel(b.dataset.goto);
 });
+
+/* Open a region (its countries, one line each), or pass null for every region.
+   The address carries it, #latin-america, so a single region can be linked to
+   or embedded; replaceState, not a new history entry, so an embed never fills
+   the host page's back button. */
+function setView(id, announce = true) {
+  const was = state.view;
+  const L = LINES.find((x) => x.id === id);
+  state.view = L ? L.id : null;
+  try { history.replaceState(null, "", L ? `#${slug(L)}` : location.pathname + location.search); } catch (err) {}
+  $("#back").hidden = !L;
+  $("#chart").setAttribute("aria-label", (L ? `Timeline of ${L.label} by country.`
+    : "Timeline of removal arrangements by region.") + " Arrow keys pan, plus and minus zoom, 0 resets.");
+  chart.scrollTop = 0;
+  drawLegend();
+  draw();
+  if (!announce) return;
+  if (L) {
+    $("#back").focus({ preventScroll: true });
+    say(`Showing ${L.label}: ${L.members.length} ${L.members.length === 1 ? "country" : "countries"}.`);
+  } else {
+    const r = chart.querySelector(`[data-region="${was}"]`);
+    if (r) r.focus({ preventScroll: true });
+    say("Showing every region.");
+  }
+}
+$("#back").addEventListener("click", () => setView(null));
+
+const activate = (g) => {
+  if (g.dataset.region) setView(g.dataset.region);
+  else if (g.dataset.card) openCountry(g.dataset.card);
+  else openPanel(g.dataset.id);
+};
 
 const tip = $("#tip");
 chart.addEventListener("mousemove", (ev) => {
-  const g = ev.target.closest(".station");
+  const g = ev.target.closest(".station, .region, .country");
   if (!g) { tip.classList.remove("on"); return; }
-  const e = byId.get(g.dataset.id);
-  if (!e) return;
-  const named = IS_GLOBAL(e) || e.members;
-  tip.innerHTML = `<b>${esc(named ? e.title : e.country)}</b>` +
-    `<span>${e.date ? esc(longDate(e.date)) : "no date on record"}</span>` +
-    (named ? (e.members ? "Open for the list" : "") : esc(e.title.slice(0, 110)));
+  if (g.dataset.region) {
+    const L = LINES.find((x) => x.id === g.dataset.region);
+    tip.innerHTML = `<b>${esc(L.label)}</b><i>Click to see its countries</i>`;
+  } else if (g.dataset.card) {
+    tip.innerHTML = `<b>${esc(g.dataset.card)}</b><i>Click for everything on record</i>`;
+  } else {
+    const e = byId.get(g.dataset.id);
+    if (!e) return;
+    const named = IS_GLOBAL(e) || e.members;
+    tip.innerHTML = `<b>${esc(named ? e.title : e.country)}</b>` +
+      `<span>${e.date ? esc(longDate(e.date)) : "no date on record"}</span>` +
+      (named ? "" : esc(e.title.slice(0, 110))) +
+      `<i>${e.members ? "Click for the list" : "Click for the full record"}</i>`;
+  }
   tip.classList.add("on");
   tip.style.left = Math.min(ev.clientX + 14, innerWidth - 300) + "px";
   tip.style.top = Math.min(ev.clientY + 18, innerHeight - 90) + "px";
@@ -1357,15 +1504,20 @@ chart.addEventListener("mousemove", (ev) => {
 chart.addEventListener("mouseleave", () => tip.classList.remove("on"));
 chart.addEventListener("click", (ev) => {
   if (drag && drag.moved) return;              // the pan that just ended, not a click
-  const g = ev.target.closest(".station");
-  if (g) openPanel(g.dataset.id);
+  const g = ev.target.closest(".station, .region, .country");
+  if (g) { tip.classList.remove("on"); activate(g); }
 });
 chart.addEventListener("keydown", (ev) => {
-  const g = ev.target.closest && ev.target.closest(".station");
-  if (g && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); openPanel(g.dataset.id); }
+  const g = ev.target.closest && ev.target.closest(".station, .region, .country");
+  if (g && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); activate(g); }
 });
 $("#panel-close").addEventListener("click", closePanel);
-document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closePanel(); });
+/* Escape backs out one step: the panel first, then the open region. */
+document.addEventListener("keydown", (ev) => {
+  if (ev.key !== "Escape") return;
+  if (state.openId) closePanel();
+  else if (state.view) setView(null);
+});
 
 function applySearch(announce) {
   let hits = 0;
@@ -1442,6 +1594,8 @@ chart.addEventListener("wheel", (ev) => {
      zooming asks for Ctrl/Cmd, which is also what a trackpad pinch already
      sends. Standalone the page does not scroll, so a bare wheel is free. */
   if (FRAMED && !armed && !ev.ctrlKey && !ev.metaKey) return;
+  /* A country view taller than its box scrolls with the bare wheel, same rule. */
+  if (chart.scrollHeight > chart.clientHeight + 1 && !ev.ctrlKey && !ev.metaKey) return;
   ev.preventDefault();
   zoomBy(Math.exp(ev.deltaY * 0.0016), ev.clientX - chart.getBoundingClientRect().left);
 }, { passive: false });
@@ -1497,8 +1651,8 @@ addEventListener("resize", onBoxChange);
 buildFilters();
 
 function firstDraw() {
-  draw();
-  drawLegend();
+  const opened = LINES.find((L) => `#${slug(L)}` === decodeURIComponent(location.hash));
+  setView(opened ? opened.id : null, false);
 
   /* On a phone the whole record in ~300px of plot is an unreadable pile, so open
      on the most recent five months instead. Everything is one Reset away. */
